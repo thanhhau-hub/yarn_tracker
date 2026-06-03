@@ -13,8 +13,8 @@ import { supabase } from '../../lib/supabase';
 import { Area, YarnRoll } from '../../types';
 
 /**
- * Move Yarn Screen
- * The worker selects a destination area for a yarn roll.
+ * Move LOT Screen
+ * The worker selects a destination area for a LOT.
  * On confirm: updates yarn_rolls.area_id AND inserts a move_log row.
  * Route: /move/[id]   (id = yarn roll id)
  */
@@ -33,7 +33,7 @@ export default function MoveYarnScreen() {
       // Load the yarn roll with its current area
       const { data: yarnData } = await supabase
         .from('yarn_rolls')
-        .select('*, areas(id, code)')
+        .select('id, yarn_code, area_id, status, updated_at, areas(id, code)')
         .eq('id', id)
         .single();
 
@@ -44,7 +44,7 @@ export default function MoveYarnScreen() {
         .eq('is_active', true)
         .order('code');
 
-      setYarn(yarnData);
+      setYarn(yarnData as unknown as YarnRoll);
       // Filter out the area the yarn is already in
       setAreas((areaData || []).filter((a: Area) => a.id !== yarnData?.area_id));
       setLoading(false);
@@ -52,12 +52,17 @@ export default function MoveYarnScreen() {
     loadData();
   }, [id]);
 
+  // Clean LOT number for display
+  function cleanLot(code: string) {
+    return code.replace(/-\d+$/, '');
+  }
+
   async function handleMove() {
     if (!selectedAreaId || !yarn) return;
 
     Alert.alert(
       'Confirm Move',
-      `Move ${yarn.yarn_code} to area ${areas.find(a => a.id === selectedAreaId)?.code}?`,
+      `Move LOT ${cleanLot(yarn.yarn_code)} to ${areas.find(a => a.id === selectedAreaId)?.code}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -95,7 +100,7 @@ export default function MoveYarnScreen() {
             }
 
             // Success — go back to the board
-            Alert.alert('✅ Moved!', `${yarn.yarn_code} is now in the new area.`, [
+            Alert.alert('✅ Moved!', `LOT ${cleanLot(yarn.yarn_code)} is now in the new area.`, [
               { text: 'OK', onPress: () => router.push('/') },
             ]);
           },
@@ -107,7 +112,7 @@ export default function MoveYarnScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#2e5c3e" />
+        <ActivityIndicator size="large" color="#0f172a" />
       </View>
     );
   }
@@ -115,7 +120,7 @@ export default function MoveYarnScreen() {
   if (!yarn) {
     return (
       <View style={styles.centered}>
-        <Text>Yarn roll not found.</Text>
+        <Text>LOT not found.</Text>
       </View>
     );
   }
@@ -124,9 +129,9 @@ export default function MoveYarnScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Current yarn info */}
+      {/* Current LOT info */}
       <View style={styles.yarnInfo}>
-        <Text style={styles.yarnCode}>{yarn.yarn_code}</Text>
+        <Text style={styles.lotCode}>LOT: {cleanLot(yarn.yarn_code)}</Text>
         <Text style={styles.currentArea}>Currently in: {currentAreaCode}</Text>
       </View>
 
@@ -190,7 +195,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
   },
-  yarnCode: { fontSize: 20, fontWeight: '800', color: '#1e293b' },
+  lotCode: { fontSize: 20, fontWeight: '800', color: '#1e293b' },
   currentArea: { fontSize: 14, color: '#64748b', marginTop: 4 },
   instruction: {
     fontSize: 14,
@@ -212,7 +217,7 @@ const styles = StyleSheet.create({
     minHeight: 50,
     justifyContent: 'center',
   },
-  areaCardSelected: { backgroundColor: '#2e5c3e', borderColor: '#2e5c3e' },
+  areaCardSelected: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
   areaCode: { fontSize: 12, fontWeight: '700', color: '#475569' },
   areaCodeSelected: { color: '#fff' },
   footer: {
@@ -226,11 +231,11 @@ const styles = StyleSheet.create({
     borderTopColor: '#e2e8f0',
   },
   confirmButton: {
-    backgroundColor: '#2e5c3e',
+    backgroundColor: '#0f172a',
     borderRadius: 12,
     padding: 18,
     alignItems: 'center',
   },
-  confirmButtonDisabled: { backgroundColor: '#89b096' },
+  confirmButtonDisabled: { backgroundColor: '#64748b' },
   confirmButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

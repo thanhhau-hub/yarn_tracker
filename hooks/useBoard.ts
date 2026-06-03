@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { AreaWithCount } from '../types';
 
 /**
- * Fetches all active areas with a live count of yarn rolls inside each one.
+ * Fetches all active areas with a live count of yarn rolls (LOTs) inside each one.
  * This powers the Board View (home screen).
  * Real-time: re-fetches whenever any yarn_roll is updated.
  */
@@ -20,23 +20,26 @@ export function useBoard() {
         yarn_rolls (
           id,
           yarn_code,
-          color,
-          type
+          status
         )
       `)
       .eq('is_active', true)
       .order('code');
-      console.log(data)
-      console.log(error)
 
     if (error) {
       setError(error.message);
     } else {
-      // Flatten the count from Supabase's nested format
-      const formatted: AreaWithCount[] = (data || []).map((area: any) => ({
-        ...area,
-        yarn_count: area.yarn_rolls?.length ?? 0,
-      }));
+      // Flatten the count from Supabase's nested format, filtering to only 'in_stock' yarn rolls
+      const formatted: AreaWithCount[] = (data || []).map((area: any) => {
+        const activeYarns = (area.yarn_rolls || []).filter(
+          (y: any) => y.status === 'in_stock'
+        );
+        return {
+          ...area,
+          yarns: activeYarns,
+          yarn_count: activeYarns.length,
+        };
+      });
       setAreas(formatted);
     }
     setLoading(false);

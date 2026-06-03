@@ -14,11 +14,12 @@ import {
   SafeAreaView,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { Ionicons } from '@expo/vector-icons';
 
 /**
- * Enterprise Login & Sign Up Screen for Delta Galil Yarn Tracking System.
- * Optimized for factory workers with clear typography, high contrast,
- * large touch targets, and robust input validation.
+ * Premium Enterprise-Grade Login & Sign Up Screen.
+ * Fully optimized for Delta Galil. Uses a light theme with clean forest green accents,
+ * inline icons for fields, soft shadow depth, and clear contrast.
  */
 export default function LoginScreen() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -28,14 +29,12 @@ export default function LoginScreen() {
   const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Simple Email Validation Helper
   const isValidEmail = (emailStr: string) => {
     const reg = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
     return reg.test(emailStr.trim());
   };
 
   async function handleAuth() {
-    // 1. Basic Field Validation
     if (!email.trim() || !password) {
       Alert.alert('Missing Fields', 'Please enter both your email address and password to continue.');
       return;
@@ -56,7 +55,7 @@ export default function LoginScreen() {
         return;
       }
       if (password !== confirmPassword) {
-        Alert.alert('Password Mismatch', 'The passwords you entered do not match. Please check and try again.');
+        Alert.alert('Password Mismatch', 'The passwords you entered do not match.');
         return;
       }
     }
@@ -65,7 +64,6 @@ export default function LoginScreen() {
 
     try {
       if (isSignUp) {
-        // Sign Up Logic
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -88,7 +86,6 @@ export default function LoginScreen() {
           setConfirmPassword('');
         }
       } else {
-        // Sign In Logic
         const { error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
@@ -98,13 +95,13 @@ export default function LoginScreen() {
           Alert.alert(
             'Sign In Failed',
             error.message === 'Invalid login credentials' 
-              ? 'The email or password you entered is incorrect. Please verify your credentials.' 
+              ? 'The email or password you entered is incorrect.' 
               : error.message
           );
         }
       }
     } catch (err: any) {
-      Alert.alert('System Error', 'An unexpected network error occurred. Please check your connection and try again.');
+      Alert.alert('System Error', 'An unexpected network error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -129,8 +126,9 @@ export default function LoginScreen() {
               resizeMode="contain"
               accessibilityLabel="Delta Galil Logo"
             />
-            <Text style={styles.companyName}>DELTA GALIL VIETNAM</Text>
-            <Text style={styles.systemName}>Yarn Tracking System</Text>
+            <View style={styles.badgeContainer}>
+              <Text style={styles.systemName}>Yarn Tracking System</Text>
+            </View>
           </View>
 
           {/* Form Card */}
@@ -141,68 +139,80 @@ export default function LoginScreen() {
             <Text style={styles.formSubtitle}>
               {isSignUp 
                 ? 'Fill in details below to register a new system operator.' 
-                : 'Enter your credentials to access the yarn whiteboard board.'}
+                : 'Enter your credentials to access the yarn whiteboard.'}
             </Text>
 
             {isSignUp && (
               <View style={styles.inputWrapper}>
                 <Text style={styles.inputLabel}>Full Name</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter your full name"
-                  placeholderTextColor="#80a090"
-                  value={fullName}
-                  onChangeText={setFullName}
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                />
+                <View style={styles.inputContainer}>
+                  <Ionicons name="person-outline" size={20} color="#64748b" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter your full name"
+                    placeholderTextColor="#94a3b8"
+                    value={fullName}
+                    onChangeText={setFullName}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                  />
+                </View>
               </View>
             )}
 
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>Work Email</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="operator@deltagalil.com"
-                placeholderTextColor="#80a090"
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                autoCorrect={false}
-                autoComplete="email"
-              />
+              <View style={styles.inputContainer}>
+                <Ionicons name="mail-outline" size={20} color="#64748b" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="operator@deltagalil.com"
+                  placeholderTextColor="#94a3b8"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoCorrect={false}
+                  autoComplete="email"
+                />
+              </View>
             </View>
 
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>Password</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter password"
-                placeholderTextColor="#80a090"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="password"
-              />
-            </View>
-
-            {isSignUp && (
-              <View style={styles.inputWrapper}>
-                <Text style={styles.inputLabel}>Confirm Password</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="lock-closed-outline" size={20} color="#64748b" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Repeat your password"
-                  placeholderTextColor="#80a090"
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
+                  placeholder="Enter password"
+                  placeholderTextColor="#94a3b8"
+                  value={password}
+                  onChangeText={setPassword}
                   secureTextEntry
                   autoCapitalize="none"
                   autoCorrect={false}
                   autoComplete="password"
                 />
+              </View>
+            </View>
+
+            {isSignUp && (
+              <View style={styles.inputWrapper}>
+                <Text style={styles.inputLabel}>Confirm Password</Text>
+                <View style={styles.inputContainer}>
+                  <Ionicons name="lock-closed-outline" size={20} color="#64748b" style={styles.inputIcon} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Repeat your password"
+                    placeholderTextColor="#94a3b8"
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoComplete="password"
+                  />
+                </View>
               </View>
             )}
 
@@ -216,7 +226,7 @@ export default function LoginScreen() {
               {loading ? (
                 <View style={styles.loadingContainer}>
                   <ActivityIndicator size="small" color="#ffffff" />
-                  <Text style={styles.buttonTextLoading}>Processing...</Text>
+                  <Text style={styles.buttonTextLoading}>Verifying...</Text>
                 </View>
               ) : (
                 <Text style={styles.buttonText}>
@@ -232,12 +242,11 @@ export default function LoginScreen() {
               </Text>
               <TouchableOpacity onPress={() => {
                 setIsSignUp(!isSignUp);
-                // Clear state on toggle to avoid confusion
                 setPassword('');
                 setConfirmPassword('');
               }}>
                 <Text style={styles.toggleLink}>
-                  {isSignUp ? ' Sign In Here' : ' Register Here'}
+                  {isSignUp ? ' Sign In' : ' Register'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -245,7 +254,7 @@ export default function LoginScreen() {
 
           {/* Footer Note */}
           <Text style={styles.footerNote}>
-            Authorized Personnel Only. All activities are logged.
+            Authorized Personnel Only · Delta Galil Industries Ltd.
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -256,7 +265,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#022c22', // Industrial dark forest green
+    backgroundColor: '#ffffff', // Clean white background for seamless logo integration
   },
   container: {
     flex: 1,
@@ -265,55 +274,53 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingVertical: 32,
   },
   headerContainer: {
     alignItems: 'center',
     marginBottom: 32,
   },
   logoImage: {
-    width: 90,
-    height: 90,
-    marginBottom: 16,
+    width: 320,
+    height: 120,
   },
-  companyName: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#ffffff',
-    letterSpacing: 2,
-    textAlign: 'center',
+  badgeContainer: {
+    backgroundColor: '#ecfdf5', // Soft translucent emerald background
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginTop: 4,
   },
   systemName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#34d399', // Mint green highlight
-    letterSpacing: 3,
-    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#047857', // Emerald green brand color
+    letterSpacing: 2,
     textTransform: 'uppercase',
   },
   card: {
-    backgroundColor: '#064e3b', // Deep emerald container card
-    borderRadius: 20,
+    backgroundColor: '#ffffff', 
+    borderRadius: 24,
     paddingHorizontal: 24,
     paddingVertical: 32,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 4,
     borderWidth: 1,
-    borderColor: '#065f46',
+    borderColor: '#f1f5f9',
   },
   formTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0f172a',
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   formSubtitle: {
     fontSize: 13,
-    color: '#a7f3d0',
+    color: '#64748b',
     textAlign: 'center',
     marginBottom: 28,
     lineHeight: 18,
@@ -322,46 +329,53 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   inputLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#d1fae5',
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#475569',
     marginBottom: 8,
     textTransform: 'uppercase',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
     paddingLeft: 2,
   },
-  input: {
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#065f46',
+    borderColor: '#e2e8f0',
     borderRadius: 12,
-    paddingHorizontal: 16,
+    backgroundColor: '#f8fafc', // Soft background fill
+    paddingHorizontal: 14,
+  },
+  inputIcon: {
+    marginRight: 10,
+  },
+  input: {
+    flex: 1,
     paddingVertical: 14,
-    fontSize: 15,
-    color: '#ffffff',
-    backgroundColor: '#022c22', // Dark contrast background for fields
+    fontSize: 14,
+    color: '#0f172a',
   },
   button: {
-    backgroundColor: '#10b981', // Clean emerald green action button
+    backgroundColor: '#047857', // Brand deep emerald green
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 12,
-    shadowColor: '#10b981',
+    shadowColor: '#047857',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
   buttonDisabled: {
-    backgroundColor: '#065f46',
-    opacity: 0.6,
+    backgroundColor: '#94a3b8',
     shadowOpacity: 0,
     elevation: 0,
   },
   buttonText: {
     color: '#ffffff',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
     letterSpacing: 1.5,
   },
@@ -371,10 +385,10 @@ const styles = StyleSheet.create({
   },
   buttonTextLoading: {
     color: '#ffffff',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
     letterSpacing: 1.5,
-    marginLeft: 10,
+    marginLeft: 8,
   },
   toggleContainer: {
     flexDirection: 'row',
@@ -384,20 +398,20 @@ const styles = StyleSheet.create({
   },
   toggleText: {
     fontSize: 13,
-    color: '#a7f3d0',
+    color: '#64748b',
   },
   toggleLink: {
     fontSize: 13,
-    color: '#34d399',
-    fontWeight: '700',
-    textDecorationLine: 'underline',
+    color: '#047857',
+    fontWeight: '800',
+    marginLeft: 4,
   },
   footerNote: {
     textAlign: 'center',
-    color: '#065f46',
+    color: '#94a3b8',
     fontSize: 11,
     fontWeight: '600',
     marginTop: 32,
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
 });

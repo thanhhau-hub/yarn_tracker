@@ -14,16 +14,13 @@ import { supabase } from '../../lib/supabase';
 import { Area } from '../../types';
 
 /**
- * Add New Yarn Screen
- * Workers register a new yarn roll when it arrives on the floor.
- * They enter the yarn code, select the storage area, and optionally
- * add color/type details.
+ * Add New LOT Screen
+ * Workers register a new LOT when it arrives on the floor.
+ * They enter the LOT number and select the storage area.
  */
 export default function AddYarnScreen() {
   const router = useRouter();
-  const [yarnCode, setYarnCode] = useState('');
-  const [color, setColor] = useState('');
-  const [type, setType] = useState('');
+  const [lotNumber, setLotNumber] = useState('');
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
   const [areas, setAreas] = useState<Area[]>([]);
   const [loading, setLoading] = useState(false);
@@ -45,8 +42,9 @@ export default function AddYarnScreen() {
   }, []);
 
   async function handleSave() {
-    if (!yarnCode.trim()) {
-      Alert.alert('Required', 'Please enter a yarn code.');
+    const baseCode = lotNumber.trim().toUpperCase();
+    if (!baseCode) {
+      Alert.alert('Required', 'Please enter a LOT number.');
       return;
     }
     if (!selectedAreaId) {
@@ -56,89 +54,99 @@ export default function AddYarnScreen() {
 
     setSaving(true);
 
-    // Check if this yarn code already exists
-    const { data: existing } = await supabase
-      .from('yarn_rolls')
-      .select('id')
-      .eq('yarn_code', yarnCode.trim().toUpperCase())
-      .single();
+    let finalCode = baseCode;
+    try {
+      // Find matching codes starting with baseCode to determine duplicate suffix
+      const { data: matches, error: fetchError } = await supabase
+        .from('yarn_rolls')
+        .select('yarn_code')
+        .ilike('yarn_code', `${baseCode}%`);
 
-    if (existing) {
-      Alert.alert('Duplicate', `Yarn code "${yarnCode.toUpperCase()}" already exists in the system.`);
+      if (fetchError) {
+        Alert.alert('Error', fetchError.message);
+        setSaving(false);
+        return;
+      }
+
+      if (matches && matches.length > 0) {
+        const regex = new RegExp(`^${baseCode}(-\\d+)?$`);
+        const matchedCodes = matches
+          .map((m) => m.yarn_code)
+          .filter((c) => regex.test(c));
+
+        if (matchedCodes.length > 0) {
+          let maxIndex = 1;
+          matchedCodes.forEach((c) => {
+            if (c === baseCode) {
+              maxIndex = Math.max(maxIndex, 1);
+            } else {
+              const parts = c.split('-');
+              const index = parseInt(parts[parts.length - 1], 10);
+              if (!isNaN(index)) {
+                maxIndex = Math.max(maxIndex, index);
+              }
+            }
+          });
+          finalCode = `${baseCode}-${maxIndex + 1}`;
+        }
+      }
+
+      // Insert the new yarn roll (LOT)
+      const { data: newYarn, error: insertError } = await supabase
+        .from('yarn_rolls')
+        .insert({
+          yarn_code: finalCode,
+          area_id: selectedAreaId,
+          status: 'in_stock',
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        Alert.alert('Error', insertError.message);
+        setSaving(false);
+        return;
+      }
+
+      // Log the initial placement
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase.from('move_logs').insert({
+        yarn_roll_id: newYarn.id,
+        from_area_id: null,       // null = came from outside
+        to_area_id: selectedAreaId,
+        moved_by: user?.id,
+        note: 'Initial placement',
+      });
+
       setSaving(false);
-      return;
-    }
-
-    // Insert the new yarn roll
-    const { data: newYarn, error } = await supabase
-      .from('yarn_rolls')
-      .insert({
-        yarn_code: yarnCode.trim().toUpperCase(),
-        color: color.trim() || null,
-        type: type.trim() || null,
-        area_id: selectedAreaId,
-        status: 'in_stock',
-      })
-      .select()
-      .single();
-
-    if (error) {
-      Alert.alert('Error', error.message);
+      Alert.alert('✅ Success', `LOT ${baseCode} registered successfully!`, [
+        { text: 'Add Another', onPress: () => { setLotNumber(''); setSelectedAreaId(null); } },
+        { text: 'Go to Board', onPress: () => router.push('/') },
+      ]);
+    } catch (err: any) {
+      Alert.alert('System Error', err.message || 'An unexpected error occurred.');
       setSaving(false);
-      return;
     }
-
-    // Log the initial placement
-    const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from('move_logs').insert({
-      yarn_roll_id: newYarn.id,
-      from_area_id: null,       // null = came from outside
-      to_area_id: selectedAreaId,
-      moved_by: user?.id,
-      note: 'Initial placement',
-    });
-
-    setSaving(false);
-    Alert.alert('✅ Success', `Yarn ${newYarn.yarn_code} added successfully!`, [
-      { text: 'Add Another', onPress: () => { setYarnCode(''); setColor(''); setType(''); setSelectedAreaId(null); } },
-      { text: 'Go to Board', onPress: () => router.push('/') },
-    ]);
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.sectionTitle}>Yarn Details</Text>
+      <Text style={styles.sectionTitle}>Register New LOT</Text>
 
-      <Text style={styles.label}>Yarn Code *</Text>
+      <Text style={styles.label}>LOT Number *</Text>
       <TextInput
         style={styles.input}
-        placeholder="e.g. YRN-0042"
-        value={yarnCode}
-        onChangeText={setYarnCode}
+        placeholder="e.g. K446, 3310"
+        value={lotNumber}
+        onChangeText={setLotNumber}
         autoCapitalize="characters"
       />
 
-      <Text style={styles.label}>Color</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="e.g. Red, Blue, Natural"
-        value={color}
-        onChangeText={setColor}
-      />
-
-      <Text style={styles.label}>Type / Specification</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="e.g. Polyester 30/1, Cotton Ne40"
-        value={type}
-        onChangeText={setType}
-      />
-
       <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Storage Area *</Text>
-      <Text style={styles.hint}>Select where this yarn roll will be stored:</Text>
+      <Text style={styles.hint}>Select where this LOT will be stored:</Text>
 
       {loading ? (
-        <ActivityIndicator color="#2e5c3e" style={{ marginTop: 16 }} />
+        <ActivityIndicator color="#0f172a" style={{ marginTop: 16 }} />
       ) : (
         <View style={styles.areaGrid}>
           {areas.map((area) => (
@@ -171,7 +179,7 @@ export default function AddYarnScreen() {
         {saving ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.saveButtonText}>✅ Save Yarn Roll</Text>
+          <Text style={styles.saveButtonText}>✅ Save LOT Position</Text>
         )}
       </TouchableOpacity>
     </ScrollView>
@@ -201,16 +209,16 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     backgroundColor: '#fff',
   },
-  areaChipSelected: { backgroundColor: '#2e5c3e', borderColor: '#2e5c3e' },
+  areaChipSelected: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
   areaChipText: { fontSize: 14, fontWeight: '600', color: '#475569' },
   areaChipTextSelected: { color: '#fff' },
   saveButton: {
-    backgroundColor: '#2e5c3e',
+    backgroundColor: '#0f172a',
     borderRadius: 12,
     padding: 18,
     alignItems: 'center',
     marginTop: 32,
   },
-  saveButtonDisabled: { backgroundColor: '#89b096' },
+  saveButtonDisabled: { backgroundColor: '#64748b' },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

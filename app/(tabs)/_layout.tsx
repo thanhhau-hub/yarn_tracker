@@ -9,7 +9,7 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#2e5c3e',
+        tabBarActiveTintColor: '#0f172a',
         tabBarInactiveTintColor: '#999',
         tabBarStyle: {
           backgroundColor: '#fff',
@@ -17,7 +17,7 @@ export default function TabLayout() {
           height: 60,
           paddingBottom: 8,
         },
-        headerStyle: { backgroundColor: '#2e5c3e' },
+        headerStyle: { backgroundColor: '#0f172a' },
         headerTintColor: '#fff',
         headerTitleStyle: { fontWeight: '700' },
       }}
@@ -26,6 +26,7 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Board',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="grid-outline" size={size} color={color} />
           ),
@@ -43,7 +44,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="add"
         options={{
-          title: 'Add Yarn',
+          title: 'Add LOT',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="add-circle-outline" size={size} color={color} />
           ),

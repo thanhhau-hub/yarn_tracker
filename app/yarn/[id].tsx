@@ -4,9 +4,8 @@ import { useYarn } from '../../hooks/useYarn';
 import { MoveLog } from '../../types';
 
 /**
- * Yarn History Screen
- * Shows the full movement history of a single yarn roll.
- * This is the audit trail that replaces the physical whiteboard's lost history.
+ * LOT History Screen
+ * Shows the full movement history of a single LOT.
  * Route: /yarn/[id]
  */
 export default function YarnHistoryScreen() {
@@ -46,7 +45,7 @@ export default function YarnHistoryScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#2e5c3e" />
+        <ActivityIndicator size="large" color="#0f172a" />
       </View>
     );
   }
@@ -54,27 +53,24 @@ export default function YarnHistoryScreen() {
   if (!yarn) {
     return (
       <View style={styles.centered}>
-        <Text style={styles.notFound}>Yarn roll not found.</Text>
+        <Text style={styles.notFound}>LOT not found.</Text>
       </View>
     );
   }
 
+  // Clean the LOT number for display
+  const cleanedLot = yarn.yarn_code.replace(/-\d+$/, '');
+
   return (
     <View style={styles.container}>
-      {/* Yarn Info Card */}
+      {/* LOT Info Card */}
       <View style={styles.infoCard}>
-        <Text style={styles.yarnCode}>{yarn.yarn_code}</Text>
-        <Text style={styles.yarnMeta}>
-          {[yarn.color, yarn.type].filter(Boolean).join(' · ') || 'No details'}
-        </Text>
+        <Text style={styles.lotCode}>LOT: {cleanedLot}</Text>
         <View style={styles.row}>
           <View style={styles.badge}>
             <Text style={styles.badgeText}>
               📍 {(yarn as any).areas?.code ?? 'Not on floor'}
             </Text>
-          </View>
-          <View style={[styles.badge, styles.statusBadge]}>
-            <Text style={styles.badgeText}>{yarn.status}</Text>
           </View>
         </View>
       </View>
@@ -104,8 +100,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e2e8f0',
   },
-  yarnCode: { fontSize: 22, fontWeight: '800', color: '#1e293b' },
-  yarnMeta: { fontSize: 14, color: '#64748b', marginTop: 4 },
+  lotCode: { fontSize: 22, fontWeight: '800', color: '#1e293b' },
   row: { flexDirection: 'row', gap: 8, marginTop: 12 },
   badge: {
     backgroundColor: '#f0fdf4',
@@ -113,8 +108,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  statusBadge: { backgroundColor: '#f0fdf4' },
-  badgeText: { fontSize: 13, fontWeight: '600', color: '#2e5c3e' },
+  badgeText: { fontSize: 13, fontWeight: '600', color: '#0f172a' },
   historyTitle: {
     fontSize: 14,
     fontWeight: '700',
@@ -134,7 +128,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     paddingLeft: 16,
   },
-  logItemFirst: { borderLeftColor: '#2e5c3e' },
+  logItemFirst: { borderLeftColor: '#0f172a' },
   logDot: {
     position: 'absolute',
     left: -5,
@@ -142,7 +136,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#2e5c3e',
+    backgroundColor: '#0f172a',
   },
   logContent: {},
   logMove: { fontSize: 15, fontWeight: '700', color: '#1e293b' },

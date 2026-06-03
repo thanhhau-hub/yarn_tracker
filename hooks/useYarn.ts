@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { YarnRoll, MoveLog } from '../types';
 
 /**
- * Fetches a single yarn roll and its full movement history.
+ * Fetches a single yarn roll (LOT) and its full movement history.
  * Used on the Yarn History screen.
  */
 export function useYarn(yarnId: string) {
@@ -16,7 +16,7 @@ export function useYarn(yarnId: string) {
     // Fetch the yarn roll with its current area joined
     const { data: yarnData, error: yarnError } = await supabase
       .from('yarn_rolls')
-      .select('*, areas(id, code, label)')
+      .select('id, yarn_code, area_id, status, updated_at, areas(id, code, label)')
       .eq('id', yarnId)
       .single();
 
@@ -25,7 +25,7 @@ export function useYarn(yarnId: string) {
       setLoading(false);
       return;
     }
-    setYarn(yarnData);
+    setYarn(yarnData as unknown as YarnRoll);
 
     // Fetch the movement history for this yarn roll
     const { data: logData, error: logError } = await supabase

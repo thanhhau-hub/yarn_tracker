@@ -42,7 +42,7 @@ export default function RootLayout() {
     if (!session && !isLoginScreen) {
       // Redirect to the login screen
       router.replace('/login');
-    } else if (session && (isLoginScreen || segments.length === 0)) {
+    } else if (session && (isLoginScreen || !segments[0])) {
       // Redirect to the home screen
       router.replace('/(tabs)');
     }

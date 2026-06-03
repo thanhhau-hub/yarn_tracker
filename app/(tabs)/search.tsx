@@ -11,13 +11,14 @@ import {
 import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase';
 import { YarnRoll } from '../../types';
+import { Ionicons } from '@expo/vector-icons';
 
-/**
- * Search Screen
- * Workers can search for a yarn roll by its code.
- * Results show which area the yarn is currently in.
- * Tapping a result goes to the Yarn History / detail screen.
- */
+// Helper function to clean LOT numbers from suffixes
+function cleanLotNumber(lot: string) {
+  if (!lot) return '';
+  return lot.replace(/-\d+$/, '');
+}
+
 export default function SearchScreen() {
   const router = useRouter();
   const [query, setQuery] = useState('');
@@ -31,38 +32,55 @@ export default function SearchScreen() {
     setLoading(true);
     setSearched(true);
 
+    // Fetch active yarn rolls (in_stock) with their storage area
     const { data, error } = await supabase
       .from('yarn_rolls')
-      .select('*, areas(id, code, label)')
-      .ilike('yarn_code', `%${query.trim()}%`) // case-insensitive partial match
+      .select('id, yarn_code, area_id, status, updated_at, areas(id, code, label)')
+      .eq('status', 'in_stock')
+      .not('area_id', 'is', null)
+      .ilike('yarn_code', `%${query.trim()}%`)
       .order('updated_at', { ascending: false })
-      .limit(20);
+      .limit(30);
 
     setLoading(false);
 
     if (!error) {
-      setResults(data || []);
+      setResults((data as unknown as YarnRoll[]) || []);
+    } else {
+      console.error('Search error:', error.message);
+      setResults([]);
+    }
+  }
+
+  function handleResultPress(item: YarnRoll) {
+    const areaId = (item as any).areas?.id;
+    const baseLot = cleanLotNumber(item.yarn_code);
+    if (areaId) {
+      // Navigate directly to the rack location on the Board with lot highlight
+      router.push({
+        pathname: '/(tabs)',
+        params: { openAreaId: areaId, searchLot: baseLot },
+      });
     }
   }
 
   function renderResult({ item }: { item: YarnRoll }) {
+    const areaCode = (item as any).areas?.code ?? 'Unknown';
+
     return (
       <TouchableOpacity
         style={styles.resultCard}
-        onPress={() => router.push(`/yarn/${item.id}`)}
+        onPress={() => handleResultPress(item)}
         activeOpacity={0.7}
       >
         <View style={styles.resultLeft}>
-          <Text style={styles.yarnCode}>{item.yarn_code}</Text>
-          <Text style={styles.yarnMeta}>
-            {[item.color, item.type].filter(Boolean).join(' · ') || 'No details'}
-          </Text>
+          <Text style={styles.lotCode}>LOT: {cleanLotNumber(item.yarn_code)}</Text>
         </View>
         <View style={styles.resultRight}>
-          <Text style={styles.areaTag}>
-            {(item as any).areas?.code ?? '—'}
-          </Text>
-          <Text style={styles.statusTag}>{item.status}</Text>
+          <View style={styles.areaBadge}>
+            <Ionicons name="location-outline" size={11} color="#ffffff" style={{ marginRight: 2 }} />
+            <Text style={styles.areaTag}>{areaCode}</Text>
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -70,25 +88,34 @@ export default function SearchScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Search Bar */}
+      {/* Search Header */}
       <View style={styles.searchRow}>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter yarn code (e.g. YRN-0042)"
-          value={query}
-          onChangeText={setQuery}
-          onSubmitEditing={handleSearch}
-          returnKeyType="search"
-          autoCapitalize="characters"
-        />
+        <View style={styles.inputContainer}>
+          <Ionicons name="search-outline" size={18} color="#94a3b8" style={styles.searchIcon} />
+          <TextInput
+            style={styles.input}
+            placeholder="Enter LOT number (e.g. K446)"
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={handleSearch}
+            returnKeyType="search"
+            autoCapitalize="characters"
+            placeholderTextColor="#94a3b8"
+          />
+          {query.length > 0 && (
+            <TouchableOpacity onPress={() => setQuery('')} style={styles.clearIcon}>
+              <Ionicons name="close-circle" size={18} color="#94a3b8" />
+            </TouchableOpacity>
+          )}
+        </View>
         <TouchableOpacity style={styles.searchButton} onPress={handleSearch}>
           <Text style={styles.searchButtonText}>Search</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Results */}
+      {/* Results List */}
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} size="large" color="#2e5c3e" />
+        <ActivityIndicator style={{ marginTop: 40 }} size="large" color="#0f172a" />
       ) : (
         <FlatList
           data={results}
@@ -97,11 +124,19 @@ export default function SearchScreen() {
           contentContainerStyle={styles.list}
           ListEmptyComponent={
             searched ? (
-              <Text style={styles.empty}>No yarn rolls found for "{query}"</Text>
+              <View style={styles.emptyContainer}>
+                <Ionicons name="alert-circle-outline" size={48} color="#cbd5e1" />
+                <Text style={styles.empty}>No active LOTs found for "{query}"</Text>
+                <Text style={styles.emptySub}>Please verify the LOT number or check if it was retrieved.</Text>
+              </View>
             ) : (
-              <Text style={styles.hint}>
-                Type a yarn code above and press Search.{'\n'}You can search by partial code.
-              </Text>
+              <View style={styles.hintContainer}>
+                <Ionicons name="barcode-outline" size={64} color="#e2e8f0" />
+                <Text style={styles.hintTitle}>LOT Number Lookup</Text>
+                <Text style={styles.hint}>
+                  Type a LOT number above and tap Search. Tapping a result will navigate to its rack location on the Board.
+                </Text>
+              </View>
             )
           }
         />
@@ -114,58 +149,76 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
   searchRow: {
     flexDirection: 'row',
-    padding: 16,
+    padding: 12,
     gap: 8,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#e2e8f0',
+    alignItems: 'center',
   },
+  inputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 8,
+    height: 42,
+  },
+  searchIcon: { marginRight: 6 },
+  clearIcon: { padding: 4 },
   input: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 15,
-    backgroundColor: '#fafafa',
+    fontSize: 14,
+    color: '#1e293b',
+    paddingVertical: 0,
   },
   searchButton: {
-    backgroundColor: '#2e5c3e',
-    borderRadius: 10,
+    backgroundColor: '#0f172a',
+    borderRadius: 8,
     paddingHorizontal: 16,
+    height: 42,
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  searchButtonText: { color: '#fff', fontWeight: '600' },
-  list: { padding: 16 },
+  searchButtonText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  list: { padding: 12 },
   resultCard: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 10,
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 6,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
   },
   resultLeft: { flex: 1 },
-  yarnCode: { fontSize: 16, fontWeight: '700', color: '#1e293b' },
-  yarnMeta: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
-  resultRight: { alignItems: 'flex-end', gap: 4 },
-  areaTag: {
-    backgroundColor: '#2e5c3e',
-    color: '#fff',
-    paddingHorizontal: 10,
+  lotCode: { fontSize: 15, fontWeight: '800', color: '#1e293b' },
+  resultRight: { alignItems: 'flex-end' },
+  areaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0f172a',
+    paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
-    fontSize: 13,
-    fontWeight: '700',
   },
-  statusTag: { fontSize: 11, color: '#94a3b8', textTransform: 'capitalize' },
-  empty: { textAlign: 'center', color: '#94a3b8', marginTop: 40 },
-  hint: { textAlign: 'center', color: '#b0b8c4', marginTop: 40, lineHeight: 22, padding: 24 },
+  areaTag: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  // Empty states
+  emptyContainer: { alignItems: 'center', marginTop: 60, padding: 20 },
+  empty: { textAlign: 'center', color: '#64748b', fontSize: 15, fontWeight: '700', marginTop: 12 },
+  emptySub: { textAlign: 'center', color: '#94a3b8', fontSize: 12, marginTop: 4, paddingHorizontal: 20 },
+
+  hintContainer: { alignItems: 'center', marginTop: 60, padding: 24 },
+  hintTitle: { fontSize: 16, fontWeight: '700', color: '#475569', marginTop: 12, marginBottom: 6 },
+  hint: { textAlign: 'center', color: '#94a3b8', fontSize: 13, lineHeight: 18, paddingHorizontal: 12 },
 });
