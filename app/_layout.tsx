@@ -74,8 +74,8 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="area/[id]" options={{ title: 'Area Detail' }} />
-          <Stack.Screen name="yarn/[id]" options={{ title: 'Yarn History' }} />
-          <Stack.Screen name="move/[id]" options={{ title: 'Move Yarn' }} />
+          <Stack.Screen name="yarn/[id]" options={{ title: 'LOT History', headerStyle: { backgroundColor: '#1b4d3e' }, headerTintColor: '#fff', headerTitleStyle: { fontWeight: '700' } }} />
+          <Stack.Screen name="move/[id]" options={{ title: 'Move LOT', headerStyle: { backgroundColor: '#1b4d3e' }, headerTintColor: '#fff', headerTitleStyle: { fontWeight: '700' } }} />
         </Stack>
       </View>
     </View>

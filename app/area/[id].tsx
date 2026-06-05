@@ -1,53 +1,78 @@
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  RefreshControl,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useArea } from '../../hooks/useArea';
+import { useRole } from '../../hooks/useRole';
 import { YarnRoll } from '../../types';
+import { Ionicons } from '@expo/vector-icons';
 
 /**
  * Area Detail Screen
  * Shows all LOTs currently stored in a specific area.
  * Workers can tap a LOT to view its history or move it.
+ * Edit/Delete actions only shown to Supervisors.
  * Route: /area/[id]
  */
 export default function AreaDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { yarns, loading, refetch } = useArea(id);
+  const { role } = useRole();
 
-  // Clean LOT number for display
   function cleanLot(code: string) {
     return code.replace(/-\d+$/, '');
   }
 
   function renderYarn({ item }: { item: YarnRoll }) {
+    const cleanedCode = cleanLot(item.yarn_code);
     return (
-      <TouchableOpacity
-        style={styles.lotCard}
-        onPress={() => router.push(`/yarn/${item.id}`)}
-        activeOpacity={0.7}
-      >
+      <View style={styles.lotCard}>
         <View style={styles.lotLeft}>
-          <Text style={styles.lotCode}>LOT: {cleanLot(item.yarn_code)}</Text>
+          <Text style={styles.lotCode}>LOT: {cleanedCode}</Text>
+          <Text style={styles.lotMeta}>Status: {item.status}</Text>
         </View>
         <View style={styles.lotActions}>
           <TouchableOpacity
+            style={styles.historyBtn}
+            onPress={() => router.push(`/yarn/${item.id}`)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="time-outline" size={14} color="#1b4d3e" />
+          </TouchableOpacity>
+          <TouchableOpacity
             style={styles.moveButton}
             onPress={() => router.push(`/move/${item.id}`)}
+            activeOpacity={0.7}
           >
-            <Text style={styles.moveButtonText}>Move →</Text>
+            <Ionicons name="swap-horizontal" size={14} color="#ffffff" style={{ marginRight: 4 }} />
+            <Text style={styles.moveButtonText}>Move</Text>
           </TouchableOpacity>
         </View>
-      </TouchableOpacity>
+      </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Count badge */}
+      {/* Count banner */}
       <View style={styles.countBanner}>
-        <Text style={styles.countText}>
-          {yarns.length} LOT{yarns.length !== 1 ? 's' : ''} in this area
-        </Text>
+        <View style={styles.countLeft}>
+          <Ionicons name="cube-outline" size={16} color="#1b4d3e" style={{ marginRight: 6 }} />
+          <Text style={styles.countText}>
+            {yarns.length} LOT{yarns.length !== 1 ? 's' : ''} stored here
+          </Text>
+        </View>
+        {yarns.length === 0 && (
+          <View style={styles.emptyBadge}>
+            <Text style={styles.emptyBadgeText}>Empty</Text>
+          </View>
+        )}
       </View>
 
       <FlatList
@@ -56,13 +81,17 @@ export default function AreaDetailScreen() {
         renderItem={renderYarn}
         contentContainerStyle={styles.list}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refetch} />
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={refetch}
+            colors={['#1b4d3e']}
+          />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📭</Text>
+            <Ionicons name="archive-outline" size={52} color="#cbd5e1" />
             <Text style={styles.emptyText}>
-              {loading ? 'Loading...' : 'This area is empty.'}
+              {loading ? 'Loading...' : 'This rack is empty.'}
             </Text>
           </View>
         }
@@ -73,15 +102,32 @@ export default function AreaDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
+
+  // Count banner
   countBanner: {
-    backgroundColor: '#f0fdf4',
-    padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: '#e8f5e9',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#dcfce7',
+    borderBottomColor: '#c8e6c9',
   },
-  countText: { color: '#0f172a', fontWeight: '600', fontSize: 14 },
-  list: { padding: 16 },
+  countLeft: { flexDirection: 'row', alignItems: 'center' },
+  countText: { color: '#1b4d3e', fontWeight: '700', fontSize: 14 },
+  emptyBadge: {
+    backgroundColor: '#f1f5f9',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  emptyBadgeText: { fontSize: 11, fontWeight: '700', color: '#64748b' },
+
+  // List
+  list: { padding: 12, paddingBottom: 32 },
+
+  // LOT card
   lotCard: {
     backgroundColor: '#fff',
     borderRadius: 10,
@@ -92,18 +138,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    shadowColor: '#1b4d3e',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
   },
   lotLeft: { flex: 1 },
-  lotCode: { fontSize: 16, fontWeight: '700', color: '#1e293b' },
-  lotActions: {},
-  moveButton: {
-    backgroundColor: '#0f172a',
+  lotCode: { fontSize: 16, fontWeight: '800', color: '#1e293b' },
+  lotMeta: { fontSize: 12, color: '#64748b', marginTop: 3, fontWeight: '500' },
+  lotActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+
+  historyBtn: {
+    backgroundColor: '#e8f5e9',
     borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  moveButtonText: { color: '#fff', fontWeight: '600', fontSize: 13 },
-  emptyContainer: { alignItems: 'center', marginTop: 60 },
-  emptyIcon: { fontSize: 40, marginBottom: 12 },
-  emptyText: { color: '#94a3b8', fontSize: 15 },
+  moveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1b4d3e',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 36,
+  },
+  moveButtonText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+
+  // Empty state
+  emptyContainer: { alignItems: 'center', marginTop: 70, gap: 12 },
+  emptyText: { color: '#94a3b8', fontSize: 15, fontWeight: '500' },
 });

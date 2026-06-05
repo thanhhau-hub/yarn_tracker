@@ -1,7 +1,8 @@
-import { View, Text, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useYarn } from '../../hooks/useYarn';
 import { MoveLog } from '../../types';
+import { Ionicons } from '@expo/vector-icons';
 
 /**
  * LOT History Screen
@@ -10,33 +11,110 @@ import { MoveLog } from '../../types';
  */
 export default function YarnHistoryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const { yarn, history, loading } = useYarn(id);
 
   function formatDate(isoString: string) {
-    const date = new Date(isoString);
-    return date.toLocaleString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    try {
+      const d = new Date(isoString);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${day}/${month}/${year} ${hours}:${minutes}`;
+    } catch {
+      return isoString;
+    }
   }
 
-  function renderLog({ item, index }: { item: MoveLog; index: number }) {
-    const isFirst = index === 0;
-    const fromCode = (item as any).from_area?.code ?? 'Outside';
-    const toCode = (item as any).to_area?.code ?? 'Removed';
+  /** Parse the JSON-encoded note field safely */
+  function parseNote(note: string | null) {
+    let action = 'MOVE';
+    let operator = 'Operator';
+    let details = '';
+
+    if (note) {
+      const trimmed = note.trim();
+      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (parsed.action) action = parsed.action;
+          if (parsed.operator) operator = parsed.operator;
+          if (parsed.details) details = parsed.details;
+        } catch {
+          details = note;
+        }
+      } else {
+        details = note;
+      }
+    }
+    if (action === 'Added') action = 'CREATE';
+    if (action === 'Moved') action = 'MOVE';
+    if (action === 'Deleted') action = 'DELETE';
+    if (action === 'Edited') action = 'EDIT';
+    return { action, operator, details };
+  }
+
+  function getActionStyle(action: string) {
+    switch (action) {
+      case 'CREATE':
+        return { bg: '#e8f5e9', color: '#2e7d32', icon: 'add-circle-outline' as const };
+      case 'MOVE':
+        return { bg: '#e3f2fd', color: '#1565c0', icon: 'swap-horizontal-outline' as const };
+      case 'DELETE':
+        return { bg: '#ffebee', color: '#c62828', icon: 'trash-outline' as const };
+      case 'EDIT':
+        return { bg: '#fff8e1', color: '#f57f17', icon: 'create-outline' as const };
+      default:
+        return { bg: '#f5f5f5', color: '#616161', icon: 'help-circle-outline' as const };
+    }
+  }
+
+  function renderLog({ item }: { item: MoveLog }) {
+    const fromCode = item.from_area_code ?? null;
+    const toCode = item.to_area_code ?? null;
+    const { action, operator, details } = parseNote(item.note);
+
+    // Fallback: infer action from areas if no note
+    let resolvedAction = item.action || action;
+    if (!item.note && !fromCode && toCode) resolvedAction = 'CREATE';
+    else if (!item.note && fromCode && !toCode) resolvedAction = 'DELETE';
+    const resolvedStyle = getActionStyle(resolvedAction);
 
     return (
-      <View style={[styles.logItem, isFirst && styles.logItemFirst]}>
-        <View style={styles.logDot} />
-        <View style={styles.logContent}>
-          <Text style={styles.logMove}>
-            {fromCode} → {toCode}
-          </Text>
-          {item.note && <Text style={styles.logNote}>{item.note}</Text>}
+      <View style={styles.logCard}>
+        {/* Card Header */}
+        <View style={styles.logHeader}>
+          <View style={[styles.actionBadge, { backgroundColor: resolvedStyle.bg }]}>
+            <Ionicons name={resolvedStyle.icon} size={13} color={resolvedStyle.color} style={{ marginRight: 4 }} />
+            <Text style={[styles.actionBadgeText, { color: resolvedStyle.color }]}>{resolvedAction}</Text>
+          </View>
           <Text style={styles.logTime}>{formatDate(item.moved_at)}</Text>
+        </View>
+
+        {/* Movement Arrow */}
+        {(fromCode || toCode) && (
+          <View style={styles.movementRow}>
+            <View style={styles.locationPill}>
+              <Text style={styles.locationText}>{fromCode ?? '—'}</Text>
+            </View>
+            <Ionicons name="arrow-forward" size={14} color="#94a3b8" style={{ marginHorizontal: 6 }} />
+            <View style={styles.locationPill}>
+              <Text style={styles.locationText}>{toCode ?? '—'}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Details */}
+        {details.trim().length > 0 && (
+          <Text style={styles.logDetails}>{details}</Text>
+        )}
+
+        {/* Operator */}
+        <View style={styles.operatorRow}>
+          <Ionicons name="person-circle-outline" size={13} color="#94a3b8" style={{ marginRight: 3 }} />
+          <Text style={styles.operatorText}>{operator}</Text>
         </View>
       </View>
     );
@@ -45,7 +123,7 @@ export default function YarnHistoryScreen() {
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#0f172a" />
+        <ActivityIndicator size="large" color="#1b4d3e" />
       </View>
     );
   }
@@ -53,37 +131,56 @@ export default function YarnHistoryScreen() {
   if (!yarn) {
     return (
       <View style={styles.centered}>
+        <Ionicons name="alert-circle-outline" size={48} color="#cbd5e1" />
         <Text style={styles.notFound}>LOT not found.</Text>
       </View>
     );
   }
 
-  // Clean the LOT number for display
   const cleanedLot = yarn.yarn_code.replace(/-\d+$/, '');
+  const currentArea = (yarn as any).areas?.code ?? null;
 
   return (
     <View style={styles.container}>
-      {/* LOT Info Card */}
+      {/* LOT Info Banner */}
       <View style={styles.infoCard}>
         <Text style={styles.lotCode}>LOT: {cleanedLot}</Text>
-        <View style={styles.row}>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>
-              📍 {(yarn as any).areas?.code ?? 'Not on floor'}
-            </Text>
-          </View>
+        <View style={styles.metaRow}>
+          {currentArea ? (
+            <View style={styles.locationBadge}>
+              <Ionicons name="location" size={13} color="#1b4d3e" style={{ marginRight: 4 }} />
+              <Text style={styles.locationBadgeText}>Currently in {currentArea}</Text>
+            </View>
+          ) : (
+            <View style={[styles.locationBadge, styles.locationBadgeGrey]}>
+              <Ionicons name="archive-outline" size={13} color="#64748b" style={{ marginRight: 4 }} />
+              <Text style={[styles.locationBadgeText, { color: '#64748b' }]}>Not on floor</Text>
+            </View>
+          )}
+          <Text style={styles.historyCount}>{history.length} event{history.length !== 1 ? 's' : ''}</Text>
         </View>
       </View>
 
-      {/* Movement Timeline */}
-      <Text style={styles.historyTitle}>Movement History</Text>
+      {/* Back to Board Button */}
+      <TouchableOpacity style={styles.backButton} onPress={() => router.push('/')}>
+        <Ionicons name="grid-outline" size={15} color="#1b4d3e" style={{ marginRight: 6 }} />
+        <Text style={styles.backButtonText}>Back to Board</Text>
+      </TouchableOpacity>
+
+      {/* Timeline Section Label */}
+      <Text style={styles.sectionLabel}>Movement History</Text>
+
+      {/* History List */}
       <FlatList
         data={history}
         keyExtractor={(item) => item.id}
         renderItem={renderLog}
         contentContainerStyle={styles.timeline}
         ListEmptyComponent={
-          <Text style={styles.empty}>No movement history yet.</Text>
+          <View style={styles.emptyContainer}>
+            <Ionicons name="receipt-outline" size={48} color="#cbd5e1" />
+            <Text style={styles.emptyText}>No movement history yet.</Text>
+          </View>
         }
       />
     </View>
@@ -92,55 +189,159 @@ export default function YarnHistoryScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  notFound: { color: '#94a3b8', fontSize: 16 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
+  notFound: { color: '#94a3b8', fontSize: 16, fontWeight: '600' },
+
+  // LOT info banner
   infoCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  lotCode: { fontSize: 22, fontWeight: '800', color: '#1e293b' },
-  row: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  badge: {
-    backgroundColor: '#f0fdf4',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  badgeText: { fontSize: 13, fontWeight: '600', color: '#0f172a' },
-  historyTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#94a3b8',
+    backgroundColor: '#1b4d3e',
     padding: 16,
-    paddingBottom: 8,
-    textTransform: 'uppercase',
+  },
+  lotCode: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#ffffff',
     letterSpacing: 0.5,
   },
-  timeline: { paddingHorizontal: 16, paddingBottom: 32 },
-  logItem: {
+  metaRow: {
     flexDirection: 'row',
-    gap: 12,
-    paddingBottom: 20,
-    borderLeftWidth: 2,
-    borderLeftColor: '#e2e8f0',
-    marginLeft: 8,
-    paddingLeft: 16,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
   },
-  logItemFirst: { borderLeftColor: '#0f172a' },
-  logDot: {
-    position: 'absolute',
-    left: -5,
-    top: 4,
-    width: 8,
-    height: 8,
+  locationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#e8f5e9',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  locationBadgeGrey: {
+    backgroundColor: '#f1f5f9',
+  },
+  locationBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1b4d3e',
+  },
+  historyCount: {
+    fontSize: 12,
+    color: '#a7f3d0',
+    fontWeight: '600',
+  },
+
+  // Back button
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+  },
+  backButtonText: {
+    fontSize: 13,
+    color: '#1b4d3e',
+    fontWeight: '700',
+  },
+
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 6,
+  },
+
+  // Timeline cards
+  timeline: { paddingHorizontal: 12, paddingBottom: 32 },
+  logCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#1b4d3e',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  logHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  actionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  actionBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  logTime: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+  movementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  locationPill: {
+    backgroundColor: '#f1f5f9',
+    borderWidth: 0.5,
+    borderColor: '#cbd5e1',
     borderRadius: 4,
-    backgroundColor: '#0f172a',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
-  logContent: {},
-  logMove: { fontSize: 15, fontWeight: '700', color: '#1e293b' },
-  logNote: { fontSize: 12, color: '#64748b', marginTop: 2 },
-  logTime: { fontSize: 11, color: '#94a3b8', marginTop: 4 },
-  empty: { textAlign: 'center', color: '#94a3b8', marginTop: 24 },
+  locationText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  logDetails: {
+    fontSize: 12,
+    color: '#475569',
+    fontStyle: 'italic',
+    marginBottom: 6,
+    lineHeight: 16,
+  },
+  operatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 6,
+    borderTopWidth: 0.5,
+    borderTopColor: '#f1f5f9',
+    marginTop: 2,
+  },
+  operatorText: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+
+  emptyContainer: {
+    alignItems: 'center',
+    marginTop: 60,
+    gap: 10,
+  },
+  emptyText: {
+    color: '#94a3b8',
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });

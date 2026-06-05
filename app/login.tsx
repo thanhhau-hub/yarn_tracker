@@ -17,16 +17,14 @@ import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 
 /**
- * Premium Enterprise-Grade Login & Sign Up Screen.
+ * Premium Enterprise-Grade Login Screen.
  * Fully optimized for Delta Galil. Uses a light theme with clean forest green accents,
  * inline icons for fields, soft shadow depth, and clear contrast.
+ * Sign-Up and Registration have been removed per requirements.
  */
 export default function LoginScreen() {
-  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [fullName, setFullName] = useState('');
   const [loading, setLoading] = useState(false);
 
   const isValidEmail = (emailStr: string) => {
@@ -45,60 +43,21 @@ export default function LoginScreen() {
       return;
     }
 
-    if (isSignUp) {
-      if (!fullName.trim()) {
-        Alert.alert('Missing Name', 'Please enter your full name for registration.');
-        return;
-      }
-      if (password.length < 6) {
-        Alert.alert('Weak Password', 'For security, your password must be at least 6 characters long.');
-        return;
-      }
-      if (password !== confirmPassword) {
-        Alert.alert('Password Mismatch', 'The passwords you entered do not match.');
-        return;
-      }
-    }
-
     setLoading(true);
 
     try {
-      if (isSignUp) {
-        const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: {
-            data: {
-              full_name: fullName.trim(),
-            },
-          },
-        });
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-        if (error) {
-          Alert.alert('Registration Failed', error.message);
-        } else {
-          Alert.alert(
-            'Registration Successful',
-            'Your account has been created! You can now sign in using your credentials.'
-          );
-          setIsSignUp(false);
-          setPassword('');
-          setConfirmPassword('');
-        }
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-
-        if (error) {
-          Alert.alert(
-            'Sign In Failed',
-            error.message === 'Invalid login credentials' 
-              ? 'The email or password you entered is incorrect.' 
-              : error.message
-          );
-        }
+      if (error) {
+        Alert.alert(
+          'Sign In Failed',
+          error.message === 'Invalid login credentials' 
+            ? 'The email or password you entered is incorrect.' 
+            : error.message
+        );
       }
     } catch (err: any) {
       Alert.alert('System Error', 'An unexpected network error occurred. Please try again.');
@@ -133,32 +92,10 @@ export default function LoginScreen() {
 
           {/* Form Card */}
           <View style={styles.card}>
-            <Text style={styles.formTitle}>
-              {isSignUp ? 'Create Operator Account' : 'Operator Sign In'}
-            </Text>
+            <Text style={styles.formTitle}>Operator Sign In</Text>
             <Text style={styles.formSubtitle}>
-              {isSignUp 
-                ? 'Fill in details below to register a new system operator.' 
-                : 'Enter your credentials to access the yarn whiteboard.'}
+              Enter your credentials to access the yarn whiteboard.
             </Text>
-
-            {isSignUp && (
-              <View style={styles.inputWrapper}>
-                <Text style={styles.inputLabel}>Full Name</Text>
-                <View style={styles.inputContainer}>
-                  <Ionicons name="person-outline" size={20} color="#64748b" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter your full name"
-                    placeholderTextColor="#94a3b8"
-                    value={fullName}
-                    onChangeText={setFullName}
-                    autoCapitalize="words"
-                    autoCorrect={false}
-                  />
-                </View>
-              </View>
-            )}
 
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>Work Email</Text>
@@ -196,26 +133,6 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            {isSignUp && (
-              <View style={styles.inputWrapper}>
-                <Text style={styles.inputLabel}>Confirm Password</Text>
-                <View style={styles.inputContainer}>
-                  <Ionicons name="lock-closed-outline" size={20} color="#64748b" style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Repeat your password"
-                    placeholderTextColor="#94a3b8"
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                    secureTextEntry
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    autoComplete="password"
-                  />
-                </View>
-              </View>
-            )}
-
             {/* Action Button */}
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
@@ -229,27 +146,9 @@ export default function LoginScreen() {
                   <Text style={styles.buttonTextLoading}>Verifying...</Text>
                 </View>
               ) : (
-                <Text style={styles.buttonText}>
-                  {isSignUp ? 'REGISTER ACCOUNT' : 'SECURE SIGN IN'}
-                </Text>
+                <Text style={styles.buttonText}>SECURE SIGN IN</Text>
               )}
             </TouchableOpacity>
-
-            {/* Mode Switcher */}
-            <View style={styles.toggleContainer}>
-              <Text style={styles.toggleText}>
-                {isSignUp ? 'Already registered?' : 'Need a new operator account?'}
-              </Text>
-              <TouchableOpacity onPress={() => {
-                setIsSignUp(!isSignUp);
-                setPassword('');
-                setConfirmPassword('');
-              }}>
-                <Text style={styles.toggleLink}>
-                  {isSignUp ? ' Sign In' : ' Register'}
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
 
           {/* Footer Note */}
@@ -275,21 +174,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
     paddingVertical: 32,
+    alignItems: 'center',
   },
   headerContainer: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
+    width: '100%',
   },
   logoImage: {
-    width: 320,
-    height: 120,
+    width: '100%',
+    maxWidth: 280,
+    height: 70,
+    alignSelf: 'center',
   },
   badgeContainer: {
     backgroundColor: '#ecfdf5', // Soft translucent emerald background
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
-    marginTop: 4,
+    marginTop: 12,
   },
   systemName: {
     fontSize: 12,
@@ -303,6 +206,8 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     paddingHorizontal: 24,
     paddingVertical: 32,
+    width: '100%',
+    maxWidth: 400,
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.08,
@@ -351,7 +256,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    paddingVertical: 14,
+    paddingVertical: 12,
     fontSize: 14,
     color: '#0f172a',
   },
@@ -389,22 +294,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1.5,
     marginLeft: 8,
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  toggleText: {
-    fontSize: 13,
-    color: '#64748b',
-  },
-  toggleLink: {
-    fontSize: 13,
-    color: '#047857',
-    fontWeight: '800',
-    marginLeft: 4,
   },
   footerNote: {
     textAlign: 'center',

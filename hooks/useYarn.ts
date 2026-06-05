@@ -16,7 +16,7 @@ export function useYarn(yarnId: string) {
     // Fetch the yarn roll with its current area joined
     const { data: yarnData, error: yarnError } = await supabase
       .from('yarn_rolls')
-      .select('id, yarn_code, area_id, status, updated_at, areas(id, code, label)')
+      .select('id, yarn_code, area_id, status, updated_at, areas(id, code, label, is_active)')
       .eq('id', yarnId)
       .single();
 
@@ -31,15 +31,23 @@ export function useYarn(yarnId: string) {
     const { data: logData, error: logError } = await supabase
       .from('move_logs')
       .select(`
-        *,
-        from_area:from_area_id(id, code),
-        to_area:to_area_id(id, code)
+        id,
+        yarn_roll_id,
+        action,
+        yarn_code,
+        from_area_code,
+        to_area_code,
+        from_area_id,
+        to_area_id,
+        moved_by,
+        moved_at,
+        note
       `)
       .eq('yarn_roll_id', yarnId)
       .order('moved_at', { ascending: false });
 
     if (!logError) {
-      setHistory(logData || []);
+      setHistory((logData || []) as unknown as MoveLog[]);
     }
     setLoading(false);
   }

@@ -18,6 +18,7 @@ export type YarnRoll = {
   area_id: string | null;   // null = not on the floor
   status: 'in_stock' | 'retrieved' | 'consumed';
   updated_at: string;
+
   // Joined fields (when fetched with area data)
   areas?: Area;
 };
@@ -25,15 +26,16 @@ export type YarnRoll = {
 /** A single movement event recorded whenever a yarn roll is moved */
 export type MoveLog = {
   id: string;
-  yarn_roll_id: string;
+  yarn_roll_id: string | null;
   from_area_id: string | null;
   to_area_id: string | null;
-  moved_by: string;     // user id from auth.users
+  moved_by: string | null;     // user id from auth.users
   moved_at: string;
   note: string | null;
-  // Joined fields
-  from_area?: Area;
-  to_area?: Area;
+  action?: 'CREATE' | 'MOVE' | 'EDIT' | 'DELETE' | 'ROLE_CHANGE' | 'AREA_CREATE' | 'AREA_DISABLE' | 'AREA_ENABLE' | null;
+  yarn_code?: string | null;
+  from_area_code?: string | null;
+  to_area_code?: string | null;
 };
 
 /** Area with a count of yarn rolls inside it (used on the board view) */

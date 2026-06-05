@@ -20,7 +20,9 @@ export function useBoard() {
         yarn_rolls (
           id,
           yarn_code,
-          status
+          area_id,
+          status,
+          updated_at
         )
       `)
       .eq('is_active', true)
