@@ -1,18 +1,18 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Text } from 'react-native';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 
 /**
  * RootLayoutContent - Consumes context to handle redirects and layout stack
  */
 function RootLayoutContent() {
-  const { session, loading } = useAuth();
+  const { session, loading, configError } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
-    if (loading) return;
+    if (loading || configError) return;
 
     const inAuthGroup = segments[0] === '(tabs)' || segments[0] === 'area' || segments[0] === 'yarn' || segments[0] === 'move';
     const isLoginScreen = segments[0] === 'login';
@@ -24,13 +24,24 @@ function RootLayoutContent() {
       // Redirect to the home screen
       router.replace('/(tabs)');
     }
-  }, [session, segments, loading]);
+  }, [session, segments, loading, configError]);
 
   // Show a spinner while checking the session
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' }}>
         <ActivityIndicator size="large" color="#0369a1" />
+      </View>
+    );
+  }
+
+  if (configError) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#f8fafc' }}>
+        <Text style={{ fontSize: 18, fontWeight: '700', color: '#b91c1c', marginBottom: 8 }}>
+          App configuration error
+        </Text>
+        <Text style={{ fontSize: 14, lineHeight: 20, color: '#475569' }}>{configError}</Text>
       </View>
     );
   }

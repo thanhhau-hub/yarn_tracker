@@ -238,7 +238,7 @@ export default function HistoryScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
-        <TouchableOpacity style={styles.filterButton} onPress={fetchHistory}>
+        <TouchableOpacity style={styles.filterButton} onPress={() => fetchHistory()}>
           <Ionicons name="search" size={16} color="#fff" />
         </TouchableOpacity>
       </View>

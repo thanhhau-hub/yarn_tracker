@@ -116,7 +116,7 @@ export default function ManageAreasScreen() {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>📍 Area Management</Text>
+          <Text style={styles.title}>Area Management</Text>
           <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
             <Ionicons name="close" size={24} color="#64748b" />
           </TouchableOpacity>

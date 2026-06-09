@@ -18,6 +18,7 @@ import {
   Switch,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { supabase } from '../../lib/supabase';
 import { useBoard } from '../../hooks/useBoard';
@@ -123,6 +124,7 @@ function BoardScreen() {
   const { areas, loading, refetch } = useBoard();
   const { role, loading: roleLoading } = useRole();
   const sectionListRef = useRef<SectionList>(null);
+  const insets = useSafeAreaInsets();
 
   const searchLot = params.searchLot;
   const openAreaId = params.openAreaId;
@@ -157,15 +159,21 @@ function BoardScreen() {
     const horizontalPadding = 24;
     const gap = 4;
     const availableWidth = containerWidth - horizontalPadding;
-    
-    // Target columns: Small: 4, Medium: 5, Large: 6
-    let cols = 4;
-    if (availableWidth >= 380 && availableWidth < 450) cols = 5;
-    else if (availableWidth >= 450) cols = 6;
-    
-    setNumColumns(cols);
+
+    // Fix cell size: min 75px, max 95px
+    // Calculate how many columns fit at minimum 75px per cell
+    const MIN_CELL = 75;
+    const MAX_CELL = 95;
+
+    const maxCols = Math.floor((availableWidth + gap) / (MIN_CELL + gap));
+    const cols = Math.max(2, maxCols); // at least 2 columns
+
     const calculatedWidth = (availableWidth - (cols - 1) * gap) / cols;
-    setColumnWidth(Math.floor(calculatedWidth));
+    // Clamp cell width between MIN and MAX
+    const cellWidth = Math.min(MAX_CELL, Math.max(MIN_CELL, Math.floor(calculatedWidth)));
+
+    setNumColumns(cols);
+    setColumnWidth(cellWidth);
   }, [containerWidth]);
 
   const onContainerLayout = (event: any) => {
@@ -470,9 +478,9 @@ function BoardScreen() {
       <View style={styles.container} onLayout={onContainerLayout}>
 
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top }]}>
           <View style={styles.headerLeft}>
-            <Text style={styles.headerTitle}>📋 Rack Board</Text>
+            <Text style={styles.headerTitle}>Rack Board</Text>
             <View style={styles.roleRow}>
               <Text style={styles.headerSub}>{occupiedRacks}/{totalRacks} occupied</Text>
               {role === 'supervisor' ? (
@@ -607,7 +615,7 @@ function BoardScreen() {
               {/* Modal Header */}
               <View style={styles.modalHeader}>
                 <View>
-                  <Text style={styles.modalTitle}>📍 {selectedArea?.code}</Text>
+                  <Text style={styles.modalTitle}>{selectedArea?.code}</Text>
                   <Text style={styles.modalSubtitle}>
                     {selectedArea?.yarn_count
                       ? `${selectedArea.yarn_count} LOT(s) stored`
@@ -769,7 +777,7 @@ function BoardScreen() {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.editCard}>
-              <Text style={styles.editModalTitle}>✏️ Edit Lot Details</Text>
+              <Text style={styles.editModalTitle}>Edit Lot Details</Text>
               
               <View style={styles.fieldWrapper}>
                 <Text style={styles.fieldLabel}>LOT CODE (Locked)</Text>
@@ -825,7 +833,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingBottom: 8,
     backgroundColor: '#1b4d3e',
   },
   headerLeft: {},
@@ -981,6 +989,7 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 17, fontWeight: '800', color: '#1b5e20' },
   modalSubtitle: { fontSize: 10, color: '#64748b', marginTop: 2 },
   closeModalButton: { padding: 4 },
+  modalScroll: { maxHeight: 520 },
   modalContent: { padding: 12 },
 
   // Lot detail card

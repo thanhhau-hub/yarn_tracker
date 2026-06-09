@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
-import { supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
 
 export type UserRole = 'worker' | 'supervisor';
@@ -10,6 +10,7 @@ type AuthContextType = {
   user: User | null;
   role: UserRole | null;
   loading: boolean;
+  configError: string | null;
   refetchRole: () => Promise<void>;
 };
 
@@ -18,6 +19,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   role: null,
   loading: true,
+  configError: null,
   refetchRole: async () => {},
 });
 
@@ -25,7 +27,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
-  const backgroundTime = useRef<number>(Date.now());
+  const [configError] = useState<string | null>(
+    isSupabaseConfigured
+      ? null
+      : 'Supabase configuration is missing. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY before building the APK.'
+  );
 
   // Helper to fetch user role from Profiles table with fallback to user metadata
   async function fetchUserRole(userId: string, userMetadataRole?: string) {
@@ -51,6 +57,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let active = true;
 
+    if (!isSupabaseConfigured) {
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
     // Initial session load
     supabase.auth.getSession()
       .then(async ({ data: { session } }) => {
@@ -75,14 +88,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
       if (!active) return;
-      if (event === 'TOKEN_REFRESH_ERROR') {
-        console.warn('Auth token refresh failed. Signing out.');
-        await supabase.auth.signOut();
-        setSession(null);
-        setRole(null);
-        setLoading(false);
-        return;
-      }
       setSession(currentSession);
       if (currentSession?.user) {
         const metaRole = currentSession.user.user_metadata?.role || 'worker';
@@ -93,21 +98,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
     });
 
-    // Global AppState listener to force token refresh when waking up from background
+    if (Platform.OS !== 'web' && AppState.currentState === 'active') {
+      supabase.auth.startAutoRefresh();
+    }
+
+    // Keep Supabase Auth refresh active only while the app is foregrounded.
     const subscriptionAppState = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState.match(/inactive|background/)) {
-        backgroundTime.current = Date.now();
-      } else if (nextAppState === 'active') {
-        const timeAway = Date.now() - backgroundTime.current;
-        // If away for more than 30s, explicitly request session to un-stick token refresh locks
-        if (timeAway > 30000) {
-          supabase.auth.getSession().catch(console.warn);
+      if (nextAppState === 'active') {
+        if (Platform.OS !== 'web') {
+          supabase.auth.startAutoRefresh();
+        }
+      } else {
+        if (Platform.OS !== 'web') {
+          supabase.auth.stopAutoRefresh();
         }
       }
     });
 
     return () => {
       active = false;
+      if (Platform.OS !== 'web') {
+        supabase.auth.stopAutoRefresh();
+      }
       subscription.unsubscribe();
       subscriptionAppState.remove();
     };
@@ -121,7 +133,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ session, user: session?.user ?? null, role, loading, refetchRole }}>
+    <AuthContext.Provider value={{ session, user: session?.user ?? null, role, loading, configError, refetchRole }}>
       {children}
     </AuthContext.Provider>
   );
