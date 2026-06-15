@@ -124,7 +124,8 @@ function BoardScreen() {
   const { session } = useAuth();
   const { areas, loading, error, refetch } = useBoard(session);
   const { role, loading: roleLoading } = useRole();
-  const sectionListRef = useRef<SectionList>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const sectionLayouts = useRef<{ [key: string]: number }>({});
   const insets = useSafeAreaInsets();
 
   const searchLot = params.searchLot;
@@ -309,32 +310,19 @@ function BoardScreen() {
 
       if (!matchedArea) return;
 
-      for (let s = 0; s < groupedSectionsForList.length; s++) {
-        const sec = groupedSectionsForList[s];
-        const flatIdx = sec.flatList.findIndex((a) => a.id === matchedArea!.id);
-        if (flatIdx !== -1) {
-          const rowIndex = Math.floor(flatIdx / numColumns);
-          targetScrollLocation.current = { sectionIndex: s, itemIndex: rowIndex };
-          if (searchScrollTimeoutRef.current) {
-            clearTimeout(searchScrollTimeoutRef.current);
-          }
-          searchScrollTimeoutRef.current = setTimeout(() => {
-            try {
-              sectionListRef.current?.scrollToLocation({
-                sectionIndex: s,
-                itemIndex: rowIndex,
-                viewPosition: 0.15,
-                animated: true,
-              });
-            } catch (e) {
-              console.warn('Scroll failed:', e);
-            }
-          }, 300);
-          break;
-        }
+      const sectionKey = matchedArea.code[0].toUpperCase();
+
+      if (searchScrollTimeoutRef.current) {
+        clearTimeout(searchScrollTimeoutRef.current);
       }
+      searchScrollTimeoutRef.current = setTimeout(() => {
+        const yPos = sectionLayouts.current[sectionKey];
+        if (yPos !== undefined) {
+          scrollViewRef.current?.scrollTo({ y: yPos, animated: true });
+        }
+      }, 300);
     },
-    [groupedSectionsForList, numColumns, sortedAreas]
+    [groupedSectionsForList, sortedAreas]
   );
 
   useEffect(() => {
@@ -349,30 +337,17 @@ function BoardScreen() {
       const targetArea = sortedAreas.find((a) => a.id === openAreaId);
       if (targetArea) {
         setSelectedArea(targetArea);
-        for (let s = 0; s < groupedSectionsForList.length; s++) {
-          const sec = groupedSectionsForList[s];
-          const flatIdx = sec.flatList.findIndex((a) => a.id === openAreaId);
-          if (flatIdx !== -1) {
-            const rowIndex = Math.floor(flatIdx / numColumns);
-            targetScrollLocation.current = { sectionIndex: s, itemIndex: rowIndex };
-            const timer = setTimeout(() => {
-              try {
-                sectionListRef.current?.scrollToLocation({
-                  sectionIndex: s,
-                  itemIndex: rowIndex,
-                  viewPosition: 0.15,
-                  animated: true,
-                });
-              } catch (e) {
-                console.warn('Scroll failed:', e);
-              }
-            }, 400);
-            return () => clearTimeout(timer);
+        const sectionKey = targetArea.code[0].toUpperCase();
+        const timer = setTimeout(() => {
+          const yPos = sectionLayouts.current[sectionKey];
+          if (yPos !== undefined) {
+            scrollViewRef.current?.scrollTo({ y: yPos, animated: true });
           }
-        }
+        }, 400);
+        return () => clearTimeout(timer);
       }
     }
-  }, [openAreaId, groupedSectionsForList, numColumns, sortedAreas]);
+  }, [openAreaId, groupedSectionsForList, sortedAreas]);
 
   const handleSearchChange = (text: string) => {
     setSearchQuery(text);
@@ -489,6 +464,79 @@ function BoardScreen() {
   const totalRacks = sortedAreas.length;
   const occupiedRacks = sortedAreas.filter((a) => (a.yarn_count ?? 0) > 0).length;
 
+  const { scrollElements, stickyHeaderIndices } = useMemo(() => {
+    const elements: JSX.Element[] = [];
+    const stickyIndices: number[] = [];
+    let currentIndex = 0;
+
+    groupedSectionsForList.forEach((section) => {
+      // Header
+      stickyIndices.push(currentIndex);
+      const sectionOccupied = section.flatList.filter((a: AreaWithCount) => (a.yarn_count ?? 0) > 0).length;
+      elements.push(
+        <View
+          key={`header-${section.key}`}
+          style={styles.sectionHeader}
+          onLayout={(e) => {
+            sectionLayouts.current[section.key] = e.nativeEvent.layout.y;
+          }}
+        >
+          <View style={styles.sectionHeaderLeft}>
+            <View style={styles.sectionDot} />
+            <Text style={styles.sectionTitle}>Section {section.key}</Text>
+          </View>
+          <Text style={styles.sectionCount}>
+            {sectionOccupied}/{section.flatList.length}
+          </Text>
+        </View>
+      );
+      currentIndex++;
+
+      // Rows
+      section.data.forEach((row, rIdx) => {
+        elements.push(
+          <View key={`row-${section.key}-${rIdx}`} style={styles.rowGrid}>
+            {row.map((area: AreaWithCount) => {
+              const activeYarns = area.yarns || [];
+              const hasYarn = activeYarns.length > 0;
+              const lotDisplay = hasYarn
+                ? activeYarns.map((y: any) => cleanLotNumber(y.yarn_code)).join(', ')
+                : '—';
+              const isMatched = isCardMatched(area);
+              const isTargetArea = openAreaId === area.id;
+              const shouldDim = isSearchActive && !isMatched;
+
+              return (
+                <RackCell
+                  key={area.id}
+                  area={area}
+                  columnWidth={columnWidth}
+                  isMatched={isMatched}
+                  isTargetArea={isTargetArea}
+                  shouldDim={shouldDim}
+                  hasYarn={hasYarn}
+                  lotDisplay={lotDisplay}
+                  onPress={() => {
+                    if (hasYarn) {
+                      setSelectedArea(area);
+                    } else if (role === 'supervisor') {
+                      router.push({ pathname: '/(tabs)/add', params: { areaId: area.id } });
+                    } else {
+                      Alert.alert('Supervisor Required', 'Adding new lots is restricted to supervisors only.');
+                    }
+                  }}
+                />
+              );
+            })}
+          </View>
+        );
+        currentIndex++;
+      });
+    });
+
+    return { scrollElements: elements, stickyHeaderIndices: stickyIndices };
+  }, [groupedSectionsForList, columnWidth, openAreaId, isSearchActive, isCardMatched, role, router]);
+
   return (
     <View style={styles.safeArea}>
       <View style={styles.container} onLayout={onContainerLayout}>
@@ -549,93 +597,23 @@ function BoardScreen() {
         </View>
 
         {/* Dense Rack Grid */}
-        <SectionList
-          ref={sectionListRef}
-          sections={groupedSectionsForList}
-          keyExtractor={(item, index) => index.toString()}
-          contentContainerStyle={styles.listContent}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor="#1b4d3e" />}
-          stickySectionHeadersEnabled={true}
-          showsVerticalScrollIndicator={true}
-          initialNumToRender={500}
-          windowSize={21}
-          maxToRenderPerBatch={100}
-          onScrollToIndexFailed={(info) => {
-            console.warn('Scroll to index failed, retrying...', info);
-            setTimeout(() => {
-              try {
-                if (targetScrollLocation.current) {
-                  sectionListRef.current?.scrollToLocation({
-                    sectionIndex: targetScrollLocation.current.sectionIndex,
-                    itemIndex: targetScrollLocation.current.itemIndex,
-                    viewPosition: 0.15,
-                    animated: false,
-                  });
-                }
-              } catch (e) {}
-            }, 500);
-          }}
-          renderSectionHeader={({ section }) => {
-            const sectionOccupied = section.flatList.filter(
-              (a: AreaWithCount) => (a.yarn_count ?? 0) > 0
-            ).length;
-            return (
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionHeaderLeft}>
-                  <View style={styles.sectionDot} />
-                  <Text style={styles.sectionTitle}>Section {section.key}</Text>
-                </View>
-                <Text style={styles.sectionCount}>
-                  {sectionOccupied}/{section.flatList.length}
-                </Text>
-              </View>
-            );
-          }}
-          renderItem={({ item }) => (
-            <View style={styles.rowGrid}>
-              {item.map((area: AreaWithCount) => {
-                const activeYarns = area.yarns || [];
-                const hasYarn = activeYarns.length > 0;
-                const lotDisplay = hasYarn
-                  ? activeYarns.map((y: any) => cleanLotNumber(y.yarn_code)).join(', ')
-                  : '—';
-                const isMatched = isCardMatched(area);
-                const isTargetArea = openAreaId === area.id;
-                const shouldDim = isSearchActive && !isMatched;
-
-                return (
-                  <RackCell
-                    key={area.id}
-                    area={area}
-                    columnWidth={columnWidth}
-                    isMatched={isMatched}
-                    isTargetArea={isTargetArea}
-                    shouldDim={shouldDim}
-                    hasYarn={hasYarn}
-                    lotDisplay={lotDisplay}
-                    onPress={() => {
-                      if (hasYarn) {
-                        setSelectedArea(area);
-                      } else if (role === 'supervisor') {
-                        // Navigate to Add tab with location pre-selected
-                        router.push({ pathname: '/(tabs)/add', params: { areaId: area.id } });
-                      } else {
-                        Alert.alert('Supervisor Required', 'Adding new lots is restricted to supervisors only.');
-                      }
-                    }}
-                  />
-                );
-              })}
-            </View>
-          )}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>
-                {loading ? 'Loading board...' : error ? `Error loading data: ${error}` : 'No rack locations found.'}
-              </Text>
-            </View>
-          }
-        />
+        {groupedSectionsForList.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>
+              {loading ? 'Loading board...' : error ? `Error loading data: ${error}` : 'No rack locations found.'}
+            </Text>
+          </View>
+        ) : (
+          <ScrollView
+            ref={scrollViewRef}
+            contentContainerStyle={styles.listContent}
+            stickyHeaderIndices={stickyHeaderIndices}
+            showsVerticalScrollIndicator={true}
+            refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor="#1b4d3e" />}
+          >
+            {scrollElements}
+          </ScrollView>
+        )}
 
         {/* Lot Action Modal */}
         <Modal
