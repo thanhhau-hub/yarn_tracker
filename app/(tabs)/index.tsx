@@ -508,10 +508,7 @@ function BoardScreen() {
                   <Text style={styles.roleBadgeText}>Worker Mode</Text>
                 </View>
               )}
-              {/* Manage Areas button */}
-              {role === 'supervisor' && (
-                <TouchableOpacity style={styles.superActionBtn} onPress={() => router.push('/manage-areas')}><Ionicons name="location" size={14} color="#047857" style={{ marginRight: 4 }} /><Text style={styles.superActionBtnText}>Manage Areas</Text></TouchableOpacity>
-              )}
+
             </View>
           </View>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.8}>

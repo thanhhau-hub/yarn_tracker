@@ -72,14 +72,23 @@ export default function TabLayout() {
         }}
       />
 
+      {/* Approval tab: only visible to Supervisors */}
+      <Tabs.Screen
+        name="approval"
+        options={{
+          title: 'Approval',
+          headerTitle: 'User Approvals',
+          href: isSupervisor ? undefined : null,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="people-outline" size={size} color={color} />
+          ),
+        }}
+      />
+
       {/* Hidden screens – still routable but not in tab bar */}
       <Tabs.Screen
         name="search"
         options={{ href: null }}
-      />
-      <Tabs.Screen
-        name="manage-areas"
-        options={{ href: null, title: 'Manage Areas' }}
       />
       <Tabs.Screen
         name="move/[id]"

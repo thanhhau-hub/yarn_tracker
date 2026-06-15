@@ -3,12 +3,14 @@ import { AppState, Platform } from 'react-native';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { Session, User } from '@supabase/supabase-js';
 
-export type UserRole = 'worker' | 'supervisor';
+export type UserRole = 'user' | 'supervisor';
+export type UserStatus = 'pending' | 'active' | 'rejected';
 
 type AuthContextType = {
   session: Session | null;
   user: User | null;
   role: UserRole | null;
+  status: UserStatus | null;
   loading: boolean;
   configError: string | null;
   refetchRole: () => Promise<void>;
@@ -18,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
   role: null,
+  status: null,
   loading: true,
   configError: null,
   refetchRole: async () => {},
@@ -26,6 +29,7 @@ const AuthContext = createContext<AuthContextType>({
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<UserRole | null>(null);
+  const [status, setStatus] = useState<UserStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [configError] = useState<string | null>(
     isSupabaseConfigured
@@ -38,19 +42,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, status')
         .eq('id', userId)
         .single();
 
       if (!error && data) {
         setRole(data.role as UserRole);
+        setStatus(data.status as UserStatus);
       } else {
-        // Fallback to user metadata role or default worker
-        setRole((userMetadataRole || 'worker') as UserRole);
+        // Fallback to user metadata role or default user
+        setRole((userMetadataRole || 'user') as UserRole);
+        setStatus('pending');
       }
     } catch (err) {
       console.error('Error fetching role in context:', err);
-      setRole((userMetadataRole || 'worker') as UserRole);
+      setRole((userMetadataRole || 'user') as UserRole);
+      setStatus('pending');
     }
   }
 
@@ -70,11 +77,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!active) return;
         setSession(session);
         if (session?.user) {
-          const metaRole = (session.user.user_metadata?.role || 'worker') as UserRole;
+          const metaRole = (session.user.user_metadata?.role || 'user') as UserRole;
           setRole(metaRole);
           fetchUserRole(session.user.id, metaRole);
         } else {
           setRole(null);
+          setStatus(null);
         }
       })
       .catch((err) => {
@@ -91,11 +99,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!active) return;
       setSession(currentSession);
       if (currentSession?.user) {
-        const metaRole = (currentSession.user.user_metadata?.role || 'worker') as UserRole;
+        const metaRole = (currentSession.user.user_metadata?.role || 'user') as UserRole;
         setRole(metaRole);
         fetchUserRole(currentSession.user.id, metaRole);
       } else {
         setRole(null);
+        setStatus(null);
       }
       setLoading(false);
     });
@@ -129,13 +138,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refetchRole = async () => {
     if (session?.user) {
-      const metaRole = session.user.user_metadata?.role || 'worker';
+      const metaRole = session.user.user_metadata?.role || 'user';
       await fetchUserRole(session.user.id, metaRole);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ session, user: session?.user ?? null, role, loading, configError, refetchRole }}>
+    <AuthContext.Provider value={{ session, user: session?.user ?? null, role, status, loading, configError, refetchRole }}>
       {children}
     </AuthContext.Provider>
   );

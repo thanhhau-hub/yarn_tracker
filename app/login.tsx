@@ -15,14 +15,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 /**
  * Premium Enterprise-Grade Login Screen.
  * Fully optimized for Delta Galil. Uses a light theme with clean forest green accents,
  * inline icons for fields, soft shadow depth, and clear contrast.
- * Sign-Up and Registration have been removed per requirements.
  */
 export default function LoginScreen() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -119,7 +120,6 @@ export default function LoginScreen() {
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>Password</Text>
               <View style={styles.inputContainer}>
-                <Ionicons name="lock-closed-outline" size={20} color="#64748b" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Enter password"
@@ -130,7 +130,6 @@ export default function LoginScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                   autoComplete="password"
-
                 />
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                   <Ionicons
@@ -141,7 +140,6 @@ export default function LoginScreen() {
                 </TouchableOpacity> 
               </View>
             </View>
-            
 
             {/* Action Button */}
             <TouchableOpacity
@@ -159,6 +157,15 @@ export default function LoginScreen() {
                 <Text style={styles.buttonText}>SECURE SIGN IN</Text>
               )}
             </TouchableOpacity>
+
+            <View style={styles.toggleContainer}>
+              <Text style={styles.toggleText}>
+                Don't have an account?{' '}
+              </Text>
+              <TouchableOpacity onPress={() => router.push('/register')} disabled={loading}>
+                <Text style={styles.toggleTextLink}>Sign Up</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Footer Note */}
@@ -174,7 +181,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#ffffff', // Clean white background for seamless logo integration
+    backgroundColor: '#ffffff',
   },
   container: {
     flex: 1,
@@ -198,7 +205,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   badgeContainer: {
-    backgroundColor: '#ecfdf5', // Soft translucent emerald background
+    backgroundColor: '#ecfdf5',
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 20,
@@ -207,7 +214,7 @@ const styles = StyleSheet.create({
   systemName: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#047857', // Emerald green brand color
+    color: '#047857',
     letterSpacing: 2,
     textTransform: 'uppercase',
   },
@@ -258,7 +265,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#e2e8f0',
     borderRadius: 12,
-    backgroundColor: '#f8fafc', // Soft background fill
+    backgroundColor: '#f8fafc',
     paddingHorizontal: 14,
   },
   inputIcon: {
@@ -271,7 +278,7 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   button: {
-    backgroundColor: '#047857', // Brand deep emerald green
+    backgroundColor: '#047857',
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
@@ -312,5 +319,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 32,
     letterSpacing: 0.5,
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 24,
+  },
+  toggleText: {
+    color: '#64748b',
+    fontSize: 13,
+  },
+  toggleTextLink: {
+    color: '#047857',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
