@@ -30,7 +30,13 @@ npm start
 ```
 Scan the QR code with **Expo Go** (install from App Store / Play Store) on your phone.
 
+### 5. Build for Production
+To build the app for Android (APK) or iOS, use Expo Application Services (EAS):
+- **Android APK**: `eas build -p android --profile preview`
+- **iOS**: Requires configuring `ios.bundleIdentifier` in `app.json` and a paid Apple Developer account. Use `eas build -p ios` after setup.
+
 ---
+
 
 ## Project Structure
 

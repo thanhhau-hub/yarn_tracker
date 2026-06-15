@@ -7,7 +7,6 @@ import {
   RefreshControl,
   Alert,
   Platform,
-  SafeAreaView,
   Modal,
   Animated,
   TextInput,
@@ -23,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { useBoard } from '../../hooks/useBoard';
 import { useRole } from '../../hooks/useRole';
+import { useAuth } from '../../context/AuthContext';
 import { AreaWithCount, Area, Profile } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -121,7 +121,8 @@ function cleanLotNumber(lot: string) {
 function BoardScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ openAreaId?: string; searchLot?: string }>();
-  const { areas, loading, refetch } = useBoard();
+  const { session } = useAuth();
+  const { areas, loading, error, refetch } = useBoard(session);
   const { role, loading: roleLoading } = useRole();
   const sectionListRef = useRef<SectionList>(null);
   const insets = useSafeAreaInsets();
@@ -270,6 +271,9 @@ function BoardScreen() {
     [activeSearch]
   );
 
+  // Keep track of the last target location for retry on failure
+  const targetScrollLocation = useRef<{ sectionIndex: number; itemIndex: number } | null>(null);
+
   // Scroll to first prefix match
   const handleSearchScroll = useCallback(
     (text: string) => {
@@ -303,6 +307,7 @@ function BoardScreen() {
         const flatIdx = sec.flatList.findIndex((a) => a.id === matchedArea!.id);
         if (flatIdx !== -1) {
           const rowIndex = Math.floor(flatIdx / numColumns);
+          targetScrollLocation.current = { sectionIndex: s, itemIndex: rowIndex };
           setTimeout(() => {
             try {
               sectionListRef.current?.scrollToLocation({
@@ -314,7 +319,7 @@ function BoardScreen() {
             } catch (e) {
               console.warn('Scroll failed:', e);
             }
-          }, 50);
+          }, 150);
           break;
         }
       }
@@ -339,6 +344,7 @@ function BoardScreen() {
           const flatIdx = sec.flatList.findIndex((a) => a.id === openAreaId);
           if (flatIdx !== -1) {
             const rowIndex = Math.floor(flatIdx / numColumns);
+            targetScrollLocation.current = { sectionIndex: s, itemIndex: rowIndex };
             const timer = setTimeout(() => {
               try {
                 sectionListRef.current?.scrollToLocation({
@@ -474,7 +480,7 @@ function BoardScreen() {
   const occupiedRacks = sortedAreas.filter((a) => (a.yarn_count ?? 0) > 0).length;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <View style={styles.container} onLayout={onContainerLayout}>
 
         {/* Header */}
@@ -541,6 +547,23 @@ function BoardScreen() {
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor="#1b4d3e" />}
           stickySectionHeadersEnabled={true}
           showsVerticalScrollIndicator={true}
+          initialNumToRender={100}
+          maxToRenderPerBatch={50}
+          onScrollToIndexFailed={(info) => {
+            console.warn('Scroll to index failed, retrying...', info);
+            setTimeout(() => {
+              try {
+                if (targetScrollLocation.current) {
+                  sectionListRef.current?.scrollToLocation({
+                    sectionIndex: targetScrollLocation.current.sectionIndex,
+                    itemIndex: targetScrollLocation.current.itemIndex,
+                    viewPosition: 0.15,
+                    animated: true,
+                  });
+                }
+              } catch (e) {}
+            }, 300);
+          }}
           renderSectionHeader={({ section }) => {
             const sectionOccupied = section.flatList.filter(
               (a: AreaWithCount) => (a.yarn_count ?? 0) > 0
@@ -597,7 +620,7 @@ function BoardScreen() {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>
-                {loading ? 'Loading board...' : 'No rack locations found.'}
+                {loading ? 'Loading board...' : error ? `Error loading data: ${error}` : 'No rack locations found.'}
               </Text>
             </View>
           }
@@ -819,7 +842,7 @@ function BoardScreen() {
         </Modal>
 
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

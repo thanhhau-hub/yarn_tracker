@@ -66,12 +66,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Initial session load
     supabase.auth.getSession()
-      .then(async ({ data: { session } }) => {
+      .then(({ data: { session } }) => {
         if (!active) return;
         setSession(session);
         if (session?.user) {
-          const metaRole = session.user.user_metadata?.role || 'worker';
-          await fetchUserRole(session.user.id, metaRole);
+          const metaRole = (session.user.user_metadata?.role || 'worker') as UserRole;
+          setRole(metaRole);
+          fetchUserRole(session.user.id, metaRole);
         } else {
           setRole(null);
         }
@@ -79,19 +80,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .catch((err) => {
         console.error('Error in initial session load:', err);
       })
-        .finally(() => {
-          if (active) {
-            setLoading(false);
-          }
-        });
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
 
     // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, currentSession) => {
       if (!active) return;
       setSession(currentSession);
       if (currentSession?.user) {
-        const metaRole = currentSession.user.user_metadata?.role || 'worker';
-        await fetchUserRole(currentSession.user.id, metaRole);
+        const metaRole = (currentSession.user.user_metadata?.role || 'worker') as UserRole;
+        setRole(metaRole);
+        fetchUserRole(currentSession.user.id, metaRole);
       } else {
         setRole(null);
       }

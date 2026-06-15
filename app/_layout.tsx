@@ -1,39 +1,49 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
-import { useEffect } from 'react';
-import { View, ActivityIndicator, Text } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { View, ActivityIndicator, Text, Platform } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from '../context/AuthContext';
+import { useFonts } from 'expo-font';
+import { Ionicons } from '@expo/vector-icons';
+import '../assets/fonts/fonts.css';
+
 
 /**
- * RootLayoutContent - Consumes context to handle redirects and layout stack
+ * RootLayoutContent - Handles auth redirects and renders the navigation stack.
+ * 
+ * CRITICAL: The <Stack> must ALWAYS be rendered immediately (never hidden behind
+ * a loading guard or conditional return). Replacing <Stack> with a loading view
+ * destroys Expo Router's internal navigation state and breaks all subsequent
+ * navigations (tab switches, router.push, etc.).
  */
 function RootLayoutContent() {
   const { session, loading, configError } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const hasRedirected = useRef(false);
 
   useEffect(() => {
+    // Don't redirect while auth is still loading
     if (loading || configError) return;
 
-    const inAuthGroup = segments[0] === '(tabs)' || segments[0] === 'area' || segments[0] === 'yarn' || segments[0] === 'move';
+    // Don't redirect if segments haven't been populated yet — this prevents
+    // firing a redundant router.replace('/(tabs)') when we're already there,
+    // which would unmount/remount the entire tree and corrupt navigation state.
+    if (!segments || segments.length === 0) return;
+
     const isLoginScreen = segments[0] === 'login';
 
     if (!session && !isLoginScreen) {
-      // Redirect to the login screen
+      // Not logged in and not on login → go to login
       router.replace('/login');
-    } else if (session && (isLoginScreen || !segments[0])) {
-      // Redirect to the home screen
+      hasRedirected.current = true;
+    } else if (session && isLoginScreen) {
+      // Logged in but still on login screen → go to home
       router.replace('/(tabs)');
+      hasRedirected.current = true;
     }
+    // All other cases: session exists AND we're already on a valid screen → do nothing
   }, [session, segments, loading, configError]);
-
-  // Show a spinner while checking the session
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' }}>
-        <ActivityIndicator size="large" color="#0369a1" />
-      </View>
-    );
-  }
 
   if (configError) {
     return (
@@ -47,13 +57,20 @@ function RootLayoutContent() {
   }
 
   return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="login" options={{ headerShown: false }} />
-      <Stack.Screen name="area/[id]" options={{ title: 'Area Detail' }} />
-      <Stack.Screen name="yarn/[id]" options={{ title: 'LOT History', headerStyle: { backgroundColor: '#1b4d3e' }, headerTintColor: '#fff', headerTitleStyle: { fontWeight: '700' } }} />
-      <Stack.Screen name="move/[id]" options={{ title: 'Move LOT', headerStyle: { backgroundColor: '#1b4d3e' }, headerTintColor: '#fff', headerTitleStyle: { fontWeight: '700' } }} />
-    </Stack>
+    <View style={{ flex: 1 }}>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="area/[id]" options={{ title: 'Area Detail' }} />
+        <Stack.Screen name="yarn/[id]" options={{ title: 'LOT History', headerStyle: { backgroundColor: '#1b4d3e' }, headerTintColor: '#fff', headerTitleStyle: { fontWeight: '700' } }} />
+        <Stack.Screen name="move/[id]" options={{ title: 'Move LOT', headerStyle: { backgroundColor: '#1b4d3e' }, headerTintColor: '#fff', headerTitleStyle: { fontWeight: '700' } }} />
+      </Stack>
+      {loading && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc', zIndex: 999 }}>
+          <ActivityIndicator size="large" color="#0369a1" />
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -61,23 +78,31 @@ function RootLayoutContent() {
  * Root layout — wraps application in AuthProvider
  */
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts(Ionicons.font);
+
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
+
   return (
-    <AuthProvider>
-      <View style={{ flex: 1, backgroundColor: '#e2e8f0', alignItems: 'center' }}>
-        <View style={{ 
-          flex: 1, 
-          width: '100%', 
-          maxWidth: 500, 
-          backgroundColor: '#fff',
-          shadowColor: '#000',
-          shadowOpacity: 0.1,
-          shadowRadius: 20,
-          elevation: 5,
-          overflow: 'hidden'
-        }}>
-          <RootLayoutContent />
+    <SafeAreaProvider>
+      <AuthProvider>
+        <View style={{ flex: 1, backgroundColor: '#e2e8f0', alignItems: 'center' }}>
+          <View style={{ 
+            flex: 1, 
+            width: '100%', 
+            maxWidth: 500, 
+            backgroundColor: '#fff',
+            shadowColor: '#000',
+            shadowOpacity: 0.1,
+            shadowRadius: 20,
+            elevation: 5,
+            overflow: 'hidden'
+          }}>
+            <RootLayoutContent />
+          </View>
         </View>
-      </View>
-    </AuthProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

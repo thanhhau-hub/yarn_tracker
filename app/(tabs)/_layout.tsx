@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useRole } from '../../hooks/useRole';
 import { ActivityIndicator, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
  * Tab navigation layout.
@@ -12,14 +13,10 @@ import { ActivityIndicator, View } from 'react-native';
  */
 export default function TabLayout() {
   const { role, loading } = useRole();
+  const insets = useSafeAreaInsets();
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' }}>
-        <ActivityIndicator size="large" color="#1b4d3e" />
-      </View>
-    );
-  }
+  // Do not conditionally return a View here! It breaks Expo Router.
+  // The layout must always return the <Tabs> component.
 
   const isSupervisor = role === 'supervisor';
 
@@ -31,8 +28,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: '#fff',
           borderTopColor: '#eee',
-          height: 60,
-          paddingBottom: 8,
+          height: 60 + insets.bottom,
+          paddingBottom: Math.max(insets.bottom, 10),
         },
         headerStyle: { backgroundColor: '#1b4d3e' },
         headerTintColor: '#fff',

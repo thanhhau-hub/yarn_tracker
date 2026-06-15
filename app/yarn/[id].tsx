@@ -1,5 +1,6 @@
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useYarn } from '../../hooks/useYarn';
 import { MoveLog } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +14,7 @@ export default function YarnHistoryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { yarn, history, loading } = useYarn(id);
+  const insets = useSafeAreaInsets();
 
   function formatDate(isoString: string) {
     try {
@@ -175,7 +177,7 @@ export default function YarnHistoryScreen() {
         data={history}
         keyExtractor={(item) => item.id}
         renderItem={renderLog}
-        contentContainerStyle={styles.timeline}
+        contentContainerStyle={[styles.timeline, { paddingBottom: Math.max(insets.bottom, 16) }]}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="receipt-outline" size={48} color="#cbd5e1" />

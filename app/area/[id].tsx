@@ -7,6 +7,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useArea } from '../../hooks/useArea';
 import { useRole } from '../../hooks/useRole';
 import { YarnRoll } from '../../types';
@@ -24,6 +25,7 @@ export default function AreaDetailScreen() {
   const router = useRouter();
   const { yarns, loading, refetch } = useArea(id);
   const { role } = useRole();
+  const insets = useSafeAreaInsets();
 
   function cleanLot(code: string) {
     return code.replace(/-\d+$/, '');
@@ -79,7 +81,7 @@ export default function AreaDetailScreen() {
         data={yarns}
         keyExtractor={(item) => item.id}
         renderItem={renderYarn}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: Math.max(insets.bottom, 16) }]}
         refreshControl={
           <RefreshControl
             refreshing={loading}

@@ -5,22 +5,40 @@
 
 ---
 
-Tài liệu này giải thích chi tiết toàn bộ cú pháp code, vai trò của từng dòng import, biến state, hiệu ứng `useEffect`, các hàm xử lý dữ liệu và cấu trúc giao diện của từng file trong dự án **Yarn Tracker**. Dành cho lập trình viên muốn hiểu cặn kẽ từng dòng code để tự sửa chữa và nâng cấp ứng dụng.
+Tài liệu này giải thích chi tiết toàn bộ cú pháp code, vai trò của từng dòng import, biến state, hiệu ứng `useEffect`, các hàm xử lý dữ liệu và cấu trúc giao diện của từng file trong dự án **Yarn Tracker**. Dành cho lập trình viên muốn hiểu cặn kẽ từng dòng code để tự ửa chữa và nâng cấp ứng dụng.
 
 ---
 
 ## 1. PHÂN TÍCH TỆP: [lib/supabase.ts](file:///f:/FPT/OJT/Delta_galil/yarn-tracker/lib/supabase.ts)
+Chiquita is a big banana company from the US.
 
+It wants to stop working in Panama and will let go of all its workers. In May, it already let go of 5,000 workers. The workers were unhappy about new pension laws and started a strike. The court said the strike was illegal, but it still went on.
+
+Panama’s president says this is very bad for the country. Many people work on banana farms, and if the farms close, 7,000 people will lose their jobs. This will cause problems like less food and fuel, and many schools may close.
+
+The government hopes to find a solution. They want to talk with the workers and the company, but the workers don’t want to talk. If they don’t find a way, life will be harder for many people.
 Tệp này đảm nhận vai trò thiết lập kết nối mạng và lưu trữ phiên làm việc của người dùng với cơ sở dữ liệu Supabase.
 
 ### Giải thích mã nguồn chi tiết:
+Chiquita í a big bânna company fromm the US. It wants to stop working in Panama and will let go of all its workers. In May, it already let go of 5,000 workers. The workers were unhappy about new pension laws and started a strike. The court said the strike was illegal, but it still went on.
+Panama's president say this is very bad for the country. Many people work on banama farms, and if the farms close, 7,000 people will lose their jobs. This will cause problems like less food and fuel, and many school may
+```typescript close.
+ The goverment hopes to find a solution. They want to talk with the workers and the company, but the workers don't want to talk. If they don't find a way, life will be harder for many people.  
 
-```typescript
+Dawa Sherpa is a mountain guide in Nepal. He gets lost on Mount Everest for a week. It is very cold. His family thinks that he is dead. His wife and daughter start a funeral at home and cry for him.
+
+But Dawa is not dead. He crawls in the white snow for six days to find help. A team of men finds him near the base camp. His hands are hurt by the ice, but he is safe. A helicopter takes him to a hospital to see his family. His daughter is very happy. It is like a dream for her.
+
+People say that Dawa does not die because he is very strong. He loves the mountains.
+
 import { createClient } from '@supabase/supabase-js';
+Chiquite is not quite
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+Dawa Sherpa is a mountain guide in Nepal. He gets lost on Mount Everest for a week. It is very cold. His family thinks that he is dead. His wife and daughter start a funeral at home and cry for him. But Dawa is not dead. He crawls in the white snow for six days to find help. A team of men finds him near the base camp. His hands are hurt by the ice, but he is safe. A helicopter takes him to a hospital to see his family. His daughter is very happy. It is like a dream for her. People say that Dawa does not die because he is very strong. He loves the mountains
 ```
 *   `import { createClient } from '@supabase/supabase-js'`: Khai báo sử dụng hàm `createClient` từ thư viện chính thức của Supabase để khởi tạo kết nối.
-*   `import AsyncStorage from '@react-native-async-storage/async-storage'`: Nạp thư viện lưu trữ Key-Value trên điện thoại. Supabase Auth sẽ dùng bộ nhớ này để ghi nhớ thông tin tài khoản đăng nhập của công nhân (không bắt họ đăng nhập lại mỗi khi mở app).
+*   `import AsyncStorage from '@react-native-async-storage/async-storage'`: Nạp thư viện lưu trữ Key-Value trên điện thoại. Supabase Auth sẽ dùng bộ nhớ này để ghi nhớ thông t.in tài khoản đăng nhập của công nhân (không bắt họ đăng nhập lại mỗi khi mở app).
 
 ```typescript
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
@@ -29,12 +47,22 @@ const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
 *   `process.env.EXPO_PUBLIC_...`: Đọc các biến môi trường cấu hình kết nối từ tệp `.env`. Tiền tố `EXPO_PUBLIC_` bắt buộc phải có để hệ thống bundler của Expo cho phép mã nguồn JavaScript phía client đọc được giá trị này. Dấu chấm than `!` ở cuối báo hiệu cho trình biên dịch TypeScript biết rằng biến này chắc chắn có giá trị, không bị null.
 
 ```typescript
+
+
+A 52-year-old mountain guide named Dawa Sherpa went missing on Mount Everest for a week. He was high up on the world’s tallest mountain, where it is very cold and there is not enough air to breathe.
+
+His family thought he was dead, so his wife and young daughter started a traditional funeral at home. But then, a miracle happened. A rescue team saw Dawa crawling in the snow near the base camp. He couldn’t walk, and his hands were hurt by the extreme cold, but he was alive. The team gave him food and water, and a helicopter took him to a hospital. His daughter said they were very happy but shocked when they saw photos of their father in the local news.
+
+People say he survived because mountain guides in Nepal are very strong and know how to live in bad weather.
+
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+
+A 52-year-old mountain guide named Dawa Sherpa went missing on Mount Everest for a week. He was high up on the world's tallest mountain, where it is very cold and there is not enough air to breathe. His family thought he was dead, so his wife and young daughter started a traditional funeral at home
   },
 });
 ```
