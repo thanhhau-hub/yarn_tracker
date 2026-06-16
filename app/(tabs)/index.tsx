@@ -33,14 +33,14 @@ function cleanLotNumber(lot: string) {
 }
 
 // ─── Animated Rack Cell ────────────────────────────────────────
-    const RackCell = React.memo(({ area, columnWidth, isMatched, isTargetArea, shouldDim, hasYarn, lotDisplay, onPress }: {
+    const RackCell = React.memo(({ area, columnWidth, isMatched, isTargetArea, shouldDim, hasYarn, lots, onPress }: {
       area: AreaWithCount;
       columnWidth: number;
       isMatched: boolean;
       isTargetArea: boolean;
       shouldDim: boolean;
       hasYarn: boolean;
-      lotDisplay: string;
+      lots: string[];
       onPress: () => void;
     }) => {
       const pulseAnim = useRef(new Animated.Value(0)).current;
@@ -105,14 +105,43 @@ function cleanLotNumber(lot: string) {
             <Text style={[styles.cellLocation, { color: locColor }]} numberOfLines={1}>
               {area.code}
             </Text>
-            <Text
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.6}
-              style={[styles.cellLot, { color: lotColor, fontWeight: hasYarn ? '800' : '400' }]}
-            >
-              {lotDisplay}
-            </Text>
+            {hasYarn && lots.length > 0 ? (
+              <View style={styles.lotsWrapper}>
+                <View style={styles.lotRow}>
+                  {lots.slice(0, 2).map((lot, idx) => (
+                    <View key={idx} style={styles.lotItem}>
+                      <Text
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.6}
+                        style={[styles.cellLotGrid, { color: lotColor, fontWeight: '800' }]}
+                      >
+                        {lot}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+                {lots.length > 2 && (
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.6}
+                    style={[styles.cellLotPlus, { color: lotColor, fontWeight: '800' }]}
+                  >
+                    +{lots.length - 2}
+                  </Text>
+                )}
+              </View>
+            ) : (
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+                style={[styles.cellLot, { color: lotColor, fontWeight: '400' }]}
+              >
+                —
+              </Text>
+            )}
           </TouchableOpacity>
         </Animated.View>
       );
@@ -279,7 +308,7 @@ function BoardScreen() {
 
   // Keep track of the last target location for retry on failure
   const targetScrollLocation = useRef<{ sectionIndex: number; itemIndex: number } | null>(null);
-  const searchScrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Scroll to first prefix match
   const handleSearchScroll = useCallback(
@@ -593,9 +622,9 @@ function BoardScreen() {
               {item.map((area: AreaWithCount) => {
                 const activeYarns = area.yarns || [];
                 const hasYarn = activeYarns.length > 0;
-                const lotDisplay = hasYarn
-                  ? activeYarns.map((y: any) => cleanLotNumber(y.yarn_code)).join(', ')
-                  : '—';
+                const lots = hasYarn
+                  ? activeYarns.map((y: any) => cleanLotNumber(y.yarn_code))
+                  : [];
                 const isMatched = isCardMatched(area);
                 const isTargetArea = openAreaId === area.id;
                 const shouldDim = isSearchActive && !isMatched;
@@ -609,7 +638,7 @@ function BoardScreen() {
                     isTargetArea={isTargetArea}
                     shouldDim={shouldDim}
                     hasYarn={hasYarn}
-                    lotDisplay={lotDisplay}
+                    lots={lots}
                     onPress={() => {
                       if (hasYarn) {
                         setSelectedArea(area);
@@ -988,6 +1017,30 @@ const styles = StyleSheet.create({
   },
   cellLocation: { fontSize: 8, fontWeight: '700', letterSpacing: 0.3 },
   cellLot: { fontSize: 13, textAlign: 'center', marginTop: 1 },
+  lotsWrapper: {
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 2,
+  },
+  lotRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 3,
+    marginVertical: 1,
+  },
+  lotItem: {
+    paddingHorizontal: 1,
+  },
+  cellLotGrid: {
+    fontSize: 11.5,
+    textAlign: 'center',
+  },
+  cellLotPlus: {
+    fontSize: 10,
+    textAlign: 'center',
+    marginTop: 1,
+  },
 
   modalOverlay: {
     flex: 1,
