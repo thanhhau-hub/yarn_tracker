@@ -35,14 +35,17 @@ function cleanLotNumber(lot: string) {
 }
 
 // ─── Animated Rack Cell ────────────────────────────────────────
-    const RackCell = React.memo(({ area, columnWidth, isMatched, isTargetArea, shouldDim, hasYarn, lots, onPress }: {
+    const RackCell = React.memo(({ area, columnWidth, isMatched, isTargetArea, shouldDim, isSelected, hasYarn, lots, colors, descs, onPress }: {
       area: AreaWithCount;
       columnWidth: number;
       isMatched: boolean;
       isTargetArea: boolean;
       shouldDim: boolean;
+      isSelected: boolean;
       hasYarn: boolean;
       lots: string[];
+      colors: string[];
+      descs: string[];
       onPress: () => void;
     }) => {
       const pulseAnim = useRef(new Animated.Value(0)).current;
@@ -81,7 +84,14 @@ function cleanLotNumber(lot: string) {
         cardBg = '#e8f5e9';
         lotColor = '#1b5e20';
         locColor = '#2e7d32';
-        borderColor = '#2e7d32';
+        borderColor = '#2e7d32'; 
+      }
+
+      if (isSelected) {
+        cardBg = '#ecfdf5';
+        lotColor = hasYarn ? '#064e3b' : '#047857';
+        locColor = '#065f46';
+        borderColor = '#10b981';
       }
 
       return (
@@ -92,11 +102,12 @@ function cleanLotNumber(lot: string) {
               width: columnWidth,
               height: columnWidth,
               backgroundColor: cardBg,
-              borderColor: isHighlighted ? animBorderColor : borderColor,
-              borderWidth: isHighlighted ? animBorderWidth : 1,
+              borderColor: isSelected ? borderColor : isHighlighted ? animBorderColor : borderColor,
+              borderWidth: isSelected ? 3 : isHighlighted ? animBorderWidth : 1,
               opacity: shouldDim ? 0.2 : 1.0,
             },
             isHighlighted && styles.highlightedCell,
+            isSelected && styles.selectedRackCell,
           ]}
         >
           <TouchableOpacity
@@ -104,35 +115,41 @@ function cleanLotNumber(lot: string) {
             onPress={onPress}
             activeOpacity={0.6}
           >
-            <Text style={[styles.cellLocation, { color: locColor }]} numberOfLines={1}>
-              {area.code}
-            </Text>
+            {/* Line 1: Rack Code (Centered) + Optional Badge */}
+            <View style={styles.cellLine1Container}>
+              <Text style={[styles.cellLocation, { color: locColor }]} numberOfLines={1}>
+                {area.code}
+              </Text>
+              {hasYarn && lots.length > 1 && (
+                <View style={styles.badgeContainer}>
+                  <Text style={[styles.badgeText, { color: isHighlighted ? '#1b5e20' : '#64748b' }]}>
+                    +{lots.length - 1}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Line 2 & 3: Primary Lot + Meta */}
             {hasYarn && lots.length > 0 ? (
               <View style={styles.lotsWrapper}>
-                <View style={styles.lotRow}>
-                  {lots.slice(0, 2).map((lot, idx) => (
-                    <View key={idx} style={styles.lotItem}>
-                      <Text
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.6}
-                        style={[styles.cellLotGrid, { color: lotColor, fontWeight: '800' }]}
-                      >
-                        {lot}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-                {lots.length > 2 && (
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}
+                  style={[styles.cellLotGrid, { color: lotColor, fontWeight: '800' }]}
+                >
+                  {lots[0]}
+                </Text>
+                
+                {/* Line 3: Color · Description subtitle */}
+                {(colors[0] || descs[0]) ? (
                   <Text
                     numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.6}
-                    style={[styles.cellLotPlus, { color: lotColor, fontWeight: '800' }]}
+                    style={[styles.cellMeta, { color: isHighlighted ? '#2e7d32' : '#94a3b8' }]}
                   >
-                    +{lots.length - 2}
+                    {[colors[0], descs[0]].filter(Boolean).join(' · ')}
                   </Text>
-                )}
+                ) : null}
               </View>
             ) : (
               <Text
@@ -164,6 +181,7 @@ function BoardScreen() {
   const [searchLotInput, setSearchLotInput] = useState('');
   const [searchColorInput, setSearchColorInput] = useState('');
   const [searchDescInput, setSearchDescInput] = useState('');
+  const [selectMode, setSelectMode] = useState(false);
   const [containerWidth, setContainerWidth] = useState<number | null>(null);
 
   // Responsive grid based on screen width
@@ -181,11 +199,35 @@ function BoardScreen() {
 
   // Areas Management panel input
   const [showAreaMgmt, setShowAreaMgmt] = useState(false);
-  const [newAreaCode, setNewAreaCode] = useState('');
-  const [newAreaLabel, setNewAreaLabel] = useState('');
   const [savingArea, setSavingArea] = useState(false);
   const [allAreas, setAllAreas] = useState<Area[]>([]);
   const [loadingAreas, setLoadingAreas] = useState(false);
+
+  // Area Mgmt - Mode: 'single' | 'multiple'
+  const [areaMgmtMode, setAreaMgmtMode] = useState<'single' | 'multiple'>('single');
+  // Single mode
+  const [singleCode, setSingleCode] = useState('');
+  // Multiple mode
+  const [multiPrefix, setMultiPrefix] = useState('');
+  const [multiFrom, setMultiFrom] = useState('');
+  const [multiTo, setMultiTo] = useState('');
+  // Switch mode confirmation
+  const [pendingMode, setPendingMode] = useState<'single' | 'multiple' | null>(null);
+
+  // Validation helpers
+  const singleHasData = singleCode.trim().length > 0;
+  const singleCodeValid = /^[A-Za-z0-9]+[.\-/][0-9]+$/.test(singleCode.trim());
+
+  const multiHasData = multiPrefix.trim().length > 0 || multiFrom.trim().length > 0 || multiTo.trim().length > 0;
+  const multiFromNum = parseInt(multiFrom.trim(), 10);
+  const multiToNum = parseInt(multiTo.trim(), 10);
+  const multiRangeValid = !isNaN(multiFromNum) && !isNaN(multiToNum) && multiToNum >= multiFromNum;
+  const multiPrefixValid = multiPrefix.trim().length > 0;
+  const multiCreateValid = multiPrefixValid && multiRangeValid;
+  const multiDeleteValid = multiPrefixValid && multiRangeValid;
+  const multiRangeError = multiPrefix.trim().length > 0 && multiFrom.trim().length > 0 && multiTo.trim().length > 0 && !multiRangeValid
+    ? 'To must be greater than or equal to From'
+    : '';
 
   const fetchAreasForMgmt = useCallback(async () => {
     setLoadingAreas(true);
@@ -198,44 +240,180 @@ function BoardScreen() {
     if (showAreaMgmt) fetchAreasForMgmt();
   }, [showAreaMgmt]);
 
-  const handleSaveArea = async () => {
-    if (!newAreaCode.trim()) {
-      Alert.alert('Missing Info', 'Area Code is required.');
-      return;
-    }
-    setSavingArea(true);
-    const { error } = await supabase.from('areas').insert({
-      code: newAreaCode.trim().toUpperCase(),
-      label: newAreaLabel.trim() || null,
-    });
-    setSavingArea(false);
-    if (error) {
-      Alert.alert('Error', error.message);
+  const trySetMode = (mode: 'single' | 'multiple') => {
+    if (mode === areaMgmtMode) return;
+    const hasInput = areaMgmtMode === 'single' ? singleHasData : multiHasData;
+    if (hasInput) {
+      setPendingMode(mode);
     } else {
-      setNewAreaCode('');
-      setNewAreaLabel('');
-      fetchAreasForMgmt();
-      Alert.alert('Success', 'Area created successfully!');
+      setAreaMgmtMode(mode);
     }
   };
 
-  const handleDeleteArea = async (areaId: string, areaCode: string) => {
-    const { count } = await supabase.from('yarns').select('*', { count: 'exact', head: true }).eq('area_id', areaId);
-    if (count && count > 0) {
-      Alert.alert('Cannot Delete', `Area ${areaCode} still contains rolls. Must be completely empty to delete.`);
+  const confirmSwitchMode = () => {
+    if (!pendingMode) return;
+    setAreaMgmtMode(pendingMode);
+    setSingleCode('');
+    setMultiPrefix('');
+    setMultiFrom('');
+    setMultiTo('');
+    setPendingMode(null);
+  };
+
+  const cancelSwitchMode = () => setPendingMode(null);
+
+  // Single create/delete
+  const handleSingleCreate = async () => {
+    const code = singleCode.trim().toUpperCase();
+    if (!code) return;
+    const msg = `Are you sure you want to create Rack ${code}?`;
+    
+    const perform = async () => {
+      setSavingArea(true);
+      const { error } = await supabase.from('areas').insert({ code, label: null });
+      setSavingArea(false);
+      if (error) {
+        if (Platform.OS === 'web') window.alert(error.message);
+        else Alert.alert('Error', error.message);
+      } else {
+        setSingleCode('');
+        fetchAreasForMgmt();
+        refetch();
+        if (Platform.OS === 'web') window.alert(`Rack ${code} created.`);
+        else Alert.alert('Success', `Rack ${code} created.`);
+        setShowAreaMgmt(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(msg)) perform();
+    } else {
+      Alert.alert('Confirm Create', msg, [{ text: 'Cancel', style: 'cancel' }, { text: 'Create', onPress: perform }]);
+    }
+  };
+
+  const handleSingleDelete = async () => {
+    const code = singleCode.trim().toUpperCase();
+    if (!code) return;
+    const area = allAreas.find(a => a.code.toUpperCase() === code);
+    if (!area) {
+      if (Platform.OS === 'web') window.alert(`Rack ${code} not found.`);
+      else Alert.alert('Not Found', `Rack ${code} not found.`);
       return;
     }
-    Alert.alert('Confirm Delete', `Are you sure you want to delete area ${areaCode}?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-          const { error } = await supabase.from('areas').delete().eq('id', areaId);
-          if (error) Alert.alert('Error', error.message);
-          else {
-            fetchAreasForMgmt();
-            Alert.alert('Success', 'Area deleted successfully!');
-          }
-      }}
-    ]);
+    const { count } = await supabase.from('yarn_rolls').select('*', { count: 'exact', head: true }).eq('area_id', area.id).is('is_deleted', false);
+    if (count && count > 0) {
+      if (Platform.OS === 'web') window.alert(`Rack ${code} still contains active rolls.`);
+      else Alert.alert('Cannot Delete', `Rack ${code} still contains active rolls.`);
+      return;
+    }
+    const msg = `Are you sure you want to delete Rack ${code}?`;
+
+    const perform = async () => {
+      setSavingArea(true);
+      const { error } = await supabase.from('areas').delete().eq('id', area.id);
+      setSavingArea(false);
+      if (error) {
+        if (Platform.OS === 'web') window.alert(error.message);
+        else Alert.alert('Error', error.message);
+      } else {
+        setSingleCode('');
+        fetchAreasForMgmt();
+        refetch();
+        if (Platform.OS === 'web') window.alert(`Rack ${code} deleted.`);
+        else Alert.alert('Success', `Rack ${code} deleted.`);
+        setShowAreaMgmt(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(msg)) perform();
+    } else {
+      Alert.alert('Confirm Delete', msg, [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: perform }]);
+    }
+  };
+
+  // Multiple create/delete
+  const buildMultiCodes = () => {
+    const prefix = multiPrefix.trim().toUpperCase();
+    const from = multiFromNum;
+    const to = multiToNum;
+    const codes: string[] = [];
+    for (let i = from; i <= to; i++) codes.push(`${prefix}.${i}`);
+    return codes;
+  };
+
+  const handleMultiCreate = async () => {
+    const codes = buildMultiCodes();
+    if (codes.length === 0) return;
+    const msg = `Are you sure you want to create ${codes.length} racks (${codes[0]} → ${codes[codes.length - 1]})?`;
+
+    const perform = async () => {
+      setSavingArea(true);
+      const rows = codes.map(code => ({ code, label: null }));
+      const { error } = await supabase.from('areas').insert(rows);
+      setSavingArea(false);
+      if (error) {
+        if (Platform.OS === 'web') window.alert(error.message);
+        else Alert.alert('Error', error.message);
+      } else {
+        setMultiPrefix('');
+        setMultiFrom('');
+        setMultiTo('');
+        fetchAreasForMgmt();
+        refetch();
+        if (Platform.OS === 'web') window.alert(`Created ${codes.length} racks.`);
+        else Alert.alert('Success', `Created ${codes.length} racks.`);
+        setShowAreaMgmt(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(msg)) perform();
+    } else {
+      Alert.alert('Confirm Create', msg, [{ text: 'Cancel', style: 'cancel' }, { text: 'Create', onPress: perform }]);
+    }
+  };
+
+  const handleMultiDelete = async () => {
+    const codes = buildMultiCodes();
+    if (codes.length === 0) return;
+    const msg = `Are you sure you want to delete ${codes.length} racks (${codes[0]} → ${codes[codes.length - 1]})?`;
+
+    const perform = async () => {
+      setSavingArea(true);
+      let deletedCount = 0;
+      let failedCodes: string[] = [];
+      for (const code of codes) {
+        const area = allAreas.find(a => a.code.toUpperCase() === code);
+        if (!area) { failedCodes.push(`${code}(not found)`); continue; }
+        const { count } = await supabase.from('yarn_rolls').select('*', { count: 'exact', head: true }).eq('area_id', area.id).is('is_deleted', false);
+        if (count && count > 0) { failedCodes.push(`${code}(occupied)`); continue; }
+        const { error } = await supabase.from('areas').delete().eq('id', area.id);
+        if (error) failedCodes.push(`${code}(err)`); else deletedCount++;
+      }
+      setSavingArea(false);
+      fetchAreasForMgmt();
+      refetch();
+      
+      const resMsg = failedCodes.length > 0 
+        ? `Deleted: ${deletedCount}. Failed: ${failedCodes.join(', ')}` 
+        : `Deleted ${deletedCount} racks.`;
+        
+      if (Platform.OS === 'web') window.alert(resMsg);
+      else Alert.alert(failedCodes.length > 0 ? 'Partial Success' : 'Success', resMsg);
+      
+      if (deletedCount > 0) setShowAreaMgmt(false);
+      setMultiPrefix('');
+      setMultiFrom('');
+      setMultiTo('');
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(msg)) perform();
+    } else {
+      Alert.alert('Confirm Delete', msg, [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: perform }]);
+    }
   };
 
   // Users Management panel list
@@ -289,6 +467,27 @@ function BoardScreen() {
   const [deleteConfirmYarn, setDeleteConfirmYarn] = useState<any>(null);
   const [deleteConfirmArea, setDeleteConfirmArea] = useState<string>('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [selectedRackIds, setSelectedRackIds] = useState<string[]>([]);
+  const [bulkDeleteConfirmVisible, setBulkDeleteConfirmVisible] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [logoutConfirmVisible, setLogoutConfirmVisible] = useState(false);
+
+  const selectedRackCount = selectedRackIds.length;
+  const selectedRackSet = useMemo(() => new Set(selectedRackIds), [selectedRackIds]);
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedRackIds([]);
+    setBulkDeleteConfirmVisible(false);
+  };
+
+  const toggleRackSelection = (areaId: string) => {
+    setSelectedRackIds((current) =>
+      current.includes(areaId)
+        ? current.filter((id) => id !== areaId)
+        : [...current, areaId]
+    );
+  };
 
   // Note: fetchProfilesForMgmt is defined later with useCallback.
 
@@ -304,28 +503,28 @@ function BoardScreen() {
     }, [refetch])
   );
 
+  const performLogout = async () => {
+    try {
+      if (selectMode) exitSelectMode();
+      setLogoutConfirmVisible(false);
+      // Clear guest mode first (no-op if not guest)
+      await setGuestMode(false);
+      if (session) {
+        await supabase.auth.signOut();
+      }
+      router.replace('/login');
+    } catch {
+      Alert.alert('Error', 'Failed to sign out. Please try again.');
+    }
+  };
+
   // Logout
   async function handleLogout() {
-    const performSignOut = async () => {
-      try {
-        // Clear guest mode first (no-op if not guest)
-        await setGuestMode(false);
-        if (session) {
-          await supabase.auth.signOut();
-        }
-        router.replace('/login');
-      } catch {
-        Alert.alert('Error', 'Failed to sign out. Please try again.');
-      }
-    };
-    if (Platform.OS === 'web') {
-      if (window.confirm('Are you sure you want to sign out?')) await performSignOut();
-    } else {
-      Alert.alert('Logout', 'Are you sure you want to sign out?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Logout', style: 'destructive', onPress: performSignOut },
-      ]);
+    if (selectMode) {
+      setLogoutConfirmVisible(true);
+      return;
     }
+    await performLogout();
   }
 
   // Sort areas numerically
@@ -343,6 +542,15 @@ function BoardScreen() {
       return (parseInt(restA[1], 10) || 0) - (parseInt(restB[1], 10) || 0);
     });
   }, [areas]);
+
+  const selectedRacks = useMemo(
+    () => sortedAreas.filter((area) => selectedRackSet.has(area.id)),
+    [sortedAreas, selectedRackSet]
+  );
+  const selectedActiveLotCount = useMemo(
+    () => selectedRacks.reduce((total, area) => total + (area.yarns?.length ?? 0), 0),
+    [selectedRacks]
+  );
 
   // Group into sections + grid rows
   const groupedSectionsForList = useMemo(() => {
@@ -364,7 +572,7 @@ function BoardScreen() {
       });
   }, [sortedAreas, numColumns]);
 
-  // ── PREFIX-BASED search matching ──────────────────────────────
+  // ── SEARCH MATCHING (AND logic, all fields optional, contains match) ──
   const activeLot = searchLotInput.trim().toLowerCase();
   const activeColor = searchColorInput.trim().toLowerCase();
   const activeDesc = searchDescInput.trim().toLowerCase();
@@ -373,11 +581,12 @@ function BoardScreen() {
   const isCardMatched = useCallback(
     (area: AreaWithCount) => {
       if (!isSearchActive) return false;
+      // At least one yarn in this rack must satisfy ALL non-empty conditions (AND)
       return (
         area.yarns?.some((yarn: any) => {
           const lotMatches = !activeLot || cleanLotNumber(yarn.yarn_code).toLowerCase().startsWith(activeLot);
-          const colorMatches = !activeColor || (yarn.color || '').toLowerCase().includes(activeColor);
-          const descMatches = !activeDesc || (yarn.description || '').toLowerCase().includes(activeDesc);
+          const colorMatches = !activeColor || (yarn.color || '').toLowerCase().startsWith(activeColor);
+          const descMatches = !activeDesc || (yarn.description || '').toLowerCase().startsWith(activeDesc);
           return lotMatches && colorMatches && descMatches;
         }) ?? false
       );
@@ -402,8 +611,8 @@ function BoardScreen() {
       const matchedArea = sortedAreas.find((area) =>
         area.yarns?.some((y: any) => {
           const lotMatches = !lot || cleanLotNumber(y.yarn_code).toLowerCase().startsWith(lot);
-          const colorMatches = !col || (y.color || '').toLowerCase().includes(col);
-          const descMatches = !des || (y.description || '').toLowerCase().includes(des);
+          const colorMatches = !col || (y.color || '').toLowerCase().startsWith(col);
+          const descMatches = !des || (y.description || '').toLowerCase().startsWith(des);
           return lotMatches && colorMatches && descMatches;
         })
       );
@@ -545,7 +754,7 @@ function BoardScreen() {
 
       const { error: updateError } = await supabase
         .from('yarn_rolls')
-        .delete()
+        .update({ is_deleted: true })
         .eq('id', deleteConfirmYarn.id);
 
       if (updateError) {
@@ -564,6 +773,72 @@ function BoardScreen() {
       Alert.alert('Error', 'An unexpected error occurred: ' + err.message);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const executeBulkDelete = async () => {
+    if (selectedRacks.length === 0) return;
+    setIsBulkDeleting(true);
+
+    try {
+      const activeYarns = selectedRacks.flatMap((area) =>
+        (area.yarns || []).map((yarn: any) => ({
+          ...yarn,
+          area_code: area.code,
+        }))
+      );
+
+      if (activeYarns.length === 0) {
+        setBulkDeleteConfirmVisible(false);
+        exitSelectMode();
+        Alert.alert('No Lots', 'Selected racks do not contain active lots.');
+        return;
+      }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      const operatorEmail = user?.email || 'Operator';
+      const logs = activeYarns.map((yarn: any) => ({
+        yarn_roll_id: yarn.id,
+        action: 'DELETE',
+        yarn_code: yarn.yarn_code,
+        from_area_code: yarn.area_code,
+        to_area_code: null,
+        from_area_id: yarn.area_id,
+        to_area_id: null,
+        moved_by: user?.id,
+        note: JSON.stringify({
+          action: 'DELETE',
+          operator: operatorEmail,
+          details: `Bulk deleted from rack ${yarn.area_code}`,
+        }),
+      }));
+
+      const { error: logErr } = await supabase.from('move_logs').insert(logs);
+      if (logErr) {
+        Alert.alert('Error', 'Audit logging failed. Lots were not deleted. ' + logErr.message);
+        return;
+      }
+
+      const { error: updateError } = await supabase
+        .from('yarn_rolls')
+        .update({ is_deleted: true })
+        .in('id', activeYarns.map((yarn: any) => yarn.id));
+
+      if (updateError) {
+        Alert.alert('Error', 'Delete operation failed: ' + updateError.message);
+        return;
+      }
+
+      const deletedRackCount = selectedRacks.length;
+      const deletedLotCount = activeYarns.length;
+      setBulkDeleteConfirmVisible(false);
+      exitSelectMode();
+      refetch();
+      Alert.alert('Success', `Deleted ${deletedLotCount} lot(s) from ${deletedRackCount} rack(s).`);
+    } catch (err: any) {
+      Alert.alert('Error', 'An unexpected error occurred: ' + err.message);
+    } finally {
+      setIsBulkDeleting(false);
     }
   };
 
@@ -603,6 +878,8 @@ function BoardScreen() {
   // Stats
   const totalRacks = sortedAreas.length;
   const occupiedRacks = sortedAreas.filter((a) => (a.yarn_count ?? 0) > 0).length;
+  const canSelectRacks = role === 'supervisor' || role === 'admin';
+  const isCompactHeader = containerWidth !== null && containerWidth < 420;
 
   return (
     <View style={styles.safeArea}>
@@ -611,7 +888,7 @@ function BoardScreen() {
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top }]}>
           <View style={styles.headerLeft}>
-            <Text style={styles.headerTitle}>Rack Board</Text>
+            <Text style={[styles.headerTitle, isCompactHeader && styles.headerTitleCompact]}>Rack Board</Text>
             <View style={styles.roleRow}>
               <Text style={styles.headerSub}>{occupiedRacks}/{totalRacks} occupied</Text>
               {role === 'supervisor' ? (
@@ -627,18 +904,58 @@ function BoardScreen() {
                   <Text style={styles.roleBadgeText}>Worker Mode</Text>
                 </View>
               )}
-              {(role === 'supervisor' || role === 'admin') && (
-                <TouchableOpacity style={styles.manageAreasBtn} onPress={() => setShowAreaMgmt(true)}>
-                  <Ionicons name="location" size={12} color="#065f46" />
-                  <Text style={styles.manageAreasBtnText}>Manage Areas</Text>
-                </TouchableOpacity>
-              )}
             </View>
           </View>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.8}>
-            <Ionicons name="log-out-outline" size={15} color="#ffffff" />
-            <Text style={styles.logoutButtonText}>Logout</Text>
-          </TouchableOpacity>
+          <View style={[styles.headerActions, isCompactHeader && styles.headerActionsCompact]}>
+            {(role === 'supervisor' || role === 'admin') && (
+              <TouchableOpacity
+                style={[styles.manageAreasBtn, isCompactHeader && styles.manageAreasBtnCompact]}
+                onPress={() => {
+                  exitSelectMode();
+                  setShowAreaMgmt(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="location" size={15} color="#065f46" />
+                <Text style={styles.manageAreasBtnText}>Manage</Text>
+              </TouchableOpacity>
+            )}
+            {canSelectRacks && (
+              <TouchableOpacity
+                style={[
+                  styles.selectModeButton,
+                  isCompactHeader && styles.selectModeButtonCompact,
+                  selectMode && styles.selectModeButtonActive,
+                ]}
+                onPress={() => {
+                  if (selectMode) {
+                    exitSelectMode();
+                  } else {
+                    setSelectedArea(null);
+                    setSelectMode(true);
+                  }
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name={selectMode ? 'close' : 'checkbox-outline'}
+                  size={15}
+                  color={selectMode ? '#ffffff' : '#065f46'}
+                />
+                <Text style={[styles.selectModeButtonText, selectMode && styles.selectModeButtonTextActive]}>
+                  {selectMode ? 'Cancel Select' : 'Select'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.logoutButton, isCompactHeader && styles.logoutButtonCompact]}
+              onPress={handleLogout}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="log-out-outline" size={15} color="#ffffff" />
+              <Text style={styles.logoutButtonText}>Logout</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
 
@@ -646,7 +963,7 @@ function BoardScreen() {
         {/* Real-time Search Bar */}
         <View style={styles.searchContainer}>
           <View style={styles.searchRow}>
-            <View style={[styles.searchInputWrapper, { flex: 1 }]}>
+            <View style={styles.searchInputWrapper}>
               <Ionicons name="barcode-outline" size={14} color="#718096" style={styles.searchIcon} />
               <TextInput
                 style={styles.searchInput}
@@ -657,7 +974,7 @@ function BoardScreen() {
                 placeholderTextColor="#a0aec0"
               />
             </View>
-            <View style={[styles.searchInputWrapper, { flex: 1, marginLeft: 6 }]}>
+            <View style={styles.searchInputWrapper}>
               <Ionicons name="color-palette-outline" size={14} color="#718096" style={styles.searchIcon} />
               <TextInput
                 style={styles.searchInput}
@@ -668,27 +985,28 @@ function BoardScreen() {
                 placeholderTextColor="#a0aec0"
               />
             </View>
-            <View style={[styles.searchInputWrapper, { flex: 1, marginLeft: 6 }]}>
+            <View style={[styles.searchInputWrapper, { marginRight: 0 }]}>
               <Ionicons name="text-outline" size={14} color="#718096" style={styles.searchIcon} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Desc"
+                placeholder="Description"
                 value={searchDescInput}
                 onChangeText={(t) => { setSearchDescInput(t); handleSearchScroll(searchLotInput, searchColorInput, t); }}
                 autoCapitalize="none"
                 placeholderTextColor="#a0aec0"
               />
             </View>
-            {isSearchActive && (
-              <TouchableOpacity onPress={handleClearSearch} style={styles.searchClearBtn}>
-                <Ionicons name="close-circle" size={18} color="#a7f3d0" />
-              </TouchableOpacity>
-            )}
           </View>
           {isSearchActive && (
-            <Text style={styles.searchHint}>
-              Filtering by: {activeLot ? `Lot: ${activeLot}  ` : ''}{activeColor ? `Color: ${activeColor}  ` : ''}{activeDesc ? `Desc: ${activeDesc}` : ''}
-            </Text>
+            <View style={styles.searchHintRow}>
+              <Text style={styles.searchHint} numberOfLines={1}>
+                {[activeLot ? `Lot: ${activeLot}` : '', activeColor ? `Color: ${activeColor}` : '', activeDesc ? `Desc: ${activeDesc}` : ''].filter(Boolean).join('  ·  ')}
+              </Text>
+              <TouchableOpacity onPress={handleClearSearch} style={styles.searchClearPill}>
+                <Ionicons name="close" size={10} color="#065f46" />
+                <Text style={styles.searchClearPillText}>Clear</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -697,7 +1015,8 @@ function BoardScreen() {
           ref={sectionListRef}
           sections={groupedSectionsForList}
           keyExtractor={(item, index) => index.toString()}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, selectMode && styles.listContentWithSelectBar]}
+          extraData={{ selectMode, selectedRackIds }}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor="#1b4d3e" />}
           stickySectionHeadersEnabled={true}
           showsVerticalScrollIndicator={true}
@@ -779,12 +1098,28 @@ function BoardScreen() {
               {item.map((area: AreaWithCount) => {
                 const activeYarns = area.yarns || [];
                 const hasYarn = activeYarns.length > 0;
-                const lots = hasYarn
-                  ? activeYarns.map((y: any) => cleanLotNumber(y.yarn_code))
-                  : [];
+                
+                let sortedYarns = [...activeYarns];
+                if (isSearchActive && hasYarn) {
+                  const matchedIdx = sortedYarns.findIndex((yarn: any) => {
+                    const lotMatches = !activeLot || cleanLotNumber(yarn.yarn_code).toLowerCase().startsWith(activeLot);
+                    const colorMatches = !activeColor || (yarn.color || '').toLowerCase().startsWith(activeColor);
+                    const descMatches = !activeDesc || (yarn.description || '').toLowerCase().startsWith(activeDesc);
+                    return lotMatches && colorMatches && descMatches;
+                  });
+                  if (matchedIdx > 0) {
+                    const matchedYarn = sortedYarns.splice(matchedIdx, 1)[0];
+                    sortedYarns.unshift(matchedYarn);
+                  }
+                }
+
+                const lots = hasYarn ? sortedYarns.map((y: any) => cleanLotNumber(y.yarn_code)) : [];
+                const colors = hasYarn ? sortedYarns.map((y: any) => y.color || '') : [];
+                const descs = hasYarn ? sortedYarns.map((y: any) => y.description || '') : [];
                 const isMatched = isCardMatched(area);
                 const isTargetArea = openAreaId === area.id;
-                const shouldDim = isSearchActive && !isMatched;
+                const shouldDim = !selectMode && isSearchActive && !isMatched;
+                const isSelected = selectedRackSet.has(area.id);
 
                 return (
                   <RackCell
@@ -794,13 +1129,17 @@ function BoardScreen() {
                     isMatched={isMatched}
                     isTargetArea={isTargetArea}
                     shouldDim={shouldDim}
+                    isSelected={isSelected}
                     hasYarn={hasYarn}
                     lots={lots}
+                    colors={colors}
+                    descs={descs}
                     onPress={() => {
-                      if (hasYarn) {
+                      if (selectMode) {
+                        toggleRackSelection(area.id);
+                      } else if (hasYarn) {
                         setSelectedArea(area);
                       } else if (role === 'supervisor' || role === 'admin') {
-                        // Navigate to Add tab with location pre-selected
                         router.push({ pathname: '/(tabs)/add', params: { areaId: area.id } });
                       } else {
                         Alert.alert('Supervisor Required', 'Adding new lots is restricted to supervisors only.');
@@ -819,6 +1158,29 @@ function BoardScreen() {
             </View>
           }
         />
+
+        {selectMode && (
+          <View style={[styles.selectActionBar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+            <TouchableOpacity
+              style={styles.selectCancelButton}
+              onPress={exitSelectMode}
+              disabled={isBulkDeleting}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="close" size={18} color="#475569" />
+              <Text style={styles.selectCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.selectDeleteButton, selectedRackCount === 0 && styles.selectDeleteButtonDisabled]}
+              onPress={() => setBulkDeleteConfirmVisible(true)}
+              disabled={isBulkDeleting || selectedRackCount === 0}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="trash-outline" size={18} color="#ffffff" />
+              <Text style={styles.selectDeleteText}>Delete ({selectedActiveLotCount})</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Lot Action Modal */}
         <Modal
@@ -856,7 +1218,18 @@ function BoardScreen() {
                             <Ionicons name="cube-outline" size={16} color="#1b4d3e" />
                             <View style={{ flex: 1 }}>
                               <Text style={styles.lotDetailText}>LOT: {cleanedLot}</Text>
-                              <Text style={styles.lotDetailSubText}>Status: {yarn.status}</Text>
+                              {yarn.color ? (
+                                <View style={styles.lotDetailMeta}>
+                                  <Ionicons name="color-palette-outline" size={11} color="#64748b" />
+                                  <Text style={styles.lotDetailMetaText}>{yarn.color}</Text>
+                                </View>
+                              ) : null}
+                              {yarn.description ? (
+                                <View style={styles.lotDetailMeta}>
+                                  <Ionicons name="text-outline" size={11} color="#64748b" />
+                                  <Text style={styles.lotDetailMetaText}>{yarn.description}</Text>
+                                </View>
+                              ) : null}
                             </View>
                           </View>
 
@@ -987,6 +1360,104 @@ function BoardScreen() {
           </View>
         </Modal>
 
+        {/* Logout Select Mode Warning Modal */}
+        <Modal
+          visible={logoutConfirmVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setLogoutConfirmVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.confirmCard}>
+              <View style={styles.confirmIconRow}>
+                <View style={styles.confirmIconBgWarning}>
+                  <Ionicons name="log-out-outline" size={28} color="#d97706" />
+                </View>
+              </View>
+
+              <Text style={styles.warningTitle}>Logout?</Text>
+              <Text style={styles.confirmSubtitle}>
+                You are in select mode. Logging out will clear your current selection.
+              </Text>
+
+              <View style={styles.confirmActions}>
+                <TouchableOpacity
+                  style={styles.btnCancel}
+                  onPress={() => setLogoutConfirmVisible(false)}
+                >
+                  <Text style={styles.btnCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.btnWarningConfirm}
+                  onPress={performLogout}
+                >
+                  <Text style={styles.btnConfirmText}>Logout</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Bulk Delete Confirmation Modal */}
+        <Modal
+          visible={bulkDeleteConfirmVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => { if (!isBulkDeleting) setBulkDeleteConfirmVisible(false); }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.confirmCard}>
+              <View style={styles.confirmIconRow}>
+                <View style={styles.confirmIconBgDelete}>
+                  <Ionicons name="trash" size={28} color="#b91c1c" />
+                </View>
+              </View>
+
+              <Text style={styles.confirmTitle}>Confirm Delete</Text>
+              <Text style={styles.confirmSubtitle}>
+                Delete {selectedActiveLotCount} active lot(s) from {selectedRackCount} selected rack(s)?
+              </Text>
+
+              <View style={styles.confirmDetails}>
+                <View style={styles.confirmRow}>
+                  <Text style={styles.confirmLabel}>Selected racks</Text>
+                  <Text style={styles.confirmValue}>{selectedRackCount}</Text>
+                </View>
+                <View style={styles.confirmDivider} />
+                <View style={styles.confirmRow}>
+                  <Text style={styles.confirmLabel}>Active lots</Text>
+                  <Text style={styles.confirmValue}>{selectedActiveLotCount}</Text>
+                </View>
+                <View style={styles.confirmDivider} />
+                <Text style={styles.bulkRackList} numberOfLines={3}>
+                  {selectedRacks.map((area) => area.code).join(', ')}
+                </Text>
+              </View>
+
+              <View style={styles.confirmActions}>
+                <TouchableOpacity
+                  style={styles.btnCancel}
+                  onPress={() => setBulkDeleteConfirmVisible(false)}
+                  disabled={isBulkDeleting}
+                >
+                  <Text style={styles.btnCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.btnDeleteConfirm}
+                  onPress={executeBulkDelete}
+                  disabled={isBulkDeleting}
+                >
+                  {isBulkDeleting ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.btnConfirmText}>Delete</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         {/* Edit Lot Modal (Supervisor Only) */}
         <Modal
           visible={editingYarn !== null}
@@ -1037,59 +1508,165 @@ function BoardScreen() {
           </View>
         </Modal>
 
-        {/* Manage Areas Full Screen Modal */}
-        <Modal visible={showAreaMgmt} animationType="slide" onRequestClose={() => setShowAreaMgmt(false)}>
-          <View style={styles.areaModalContainer}>
-            <View style={styles.areaModalHeader}>
-              <Text style={styles.areaModalTitle}>Manage Areas</Text>
-              <TouchableOpacity onPress={() => setShowAreaMgmt(false)} style={styles.areaModalCloseBtn}>
-                <Ionicons name="close" size={24} color="#ffffff" />
+        {/* Manage Areas Inline Screen */}
+        {showAreaMgmt && (
+          <View style={styles.areaMgmtScreen}>
+            {/* Screen Header */}
+            <View style={styles.areaMgmtHeader}>
+              <TouchableOpacity onPress={() => { setShowAreaMgmt(false); setSingleCode(''); setMultiPrefix(''); setMultiFrom(''); setMultiTo(''); }} style={styles.areaMgmtBackBtn}>
+                <Ionicons name="arrow-back" size={22} color="#fff" />
               </TouchableOpacity>
+              <Text style={styles.areaMgmtTitle}>Manage Areas</Text>
             </View>
-            <ScrollView style={styles.areaModalContent}>
-              <View style={styles.areaFormCard}>
-                <Text style={styles.areaFormTitle}>Create New Area / Rack</Text>
-                <View style={styles.areaFormRow}>
-                  <TextInput
-                    style={styles.areaFormInputCode}
-                    placeholder="Code (e.g. A1.1)"
-                    value={newAreaCode}
-                    onChangeText={setNewAreaCode}
-                    autoCapitalize="characters"
-                  />
-                  <TextInput
-                    style={styles.areaFormInputLabel}
-                    placeholder="Label (Optional)"
-                    value={newAreaLabel}
-                    onChangeText={setNewAreaLabel}
-                  />
-                  <TouchableOpacity style={styles.areaFormBtn} onPress={handleSaveArea} disabled={savingArea}>
-                    {savingArea ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.areaFormBtnText}>Add</Text>}
-                  </TouchableOpacity>
-                </View>
-              </View>
-              
-              <Text style={styles.areaListTitle}>All Areas ({allAreas.length})</Text>
-              {loadingAreas ? (
-                <ActivityIndicator size="large" color="#1b4d3e" style={{ marginTop: 20 }} />
-              ) : (
-                <View style={styles.areaList}>
-                  {allAreas.map(a => (
-                    <View key={a.id} style={styles.areaListItem}>
-                      <View>
-                        <Text style={styles.areaItemCode}>{a.code}</Text>
-                        {a.label && <Text style={styles.areaItemLabel}>{a.label}</Text>}
-                      </View>
-                      <TouchableOpacity onPress={() => handleDeleteArea(a.id, a.code)} style={styles.areaItemDeleteBtn}>
-                        <Ionicons name="trash" size={16} color="#ef4444" />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.areaMgmtBody} keyboardShouldPersistTaps="handled">
+
+              {/* Mode Switch Confirmation Inline Banner */}
+              {pendingMode !== null && (
+                <View style={styles.switchBanner}>
+                  <Text style={styles.switchBannerTitle}>Switch mode?</Text>
+                  <Text style={styles.switchBannerSub}>Current input will be cleared.</Text>
+                  <View style={styles.switchBannerActions}>
+                    <TouchableOpacity style={styles.switchCancelBtn} onPress={cancelSwitchMode}>
+                      <Text style={styles.switchCancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.switchConfirmBtn} onPress={confirmSwitchMode}>
+                      <Text style={styles.switchConfirmText}>Switch</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               )}
+
+              {/* Radio Mode Selector */}
+              <View style={styles.modeCard}>
+                <TouchableOpacity
+                  style={[styles.modeRow, areaMgmtMode === 'single' && styles.modeRowActive]}
+                  onPress={() => trySetMode('single')}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.radioOuter, areaMgmtMode === 'single' && styles.radioOuterActive]}>
+                    {areaMgmtMode === 'single' && <View style={styles.radioInner} />}
+                  </View>
+                  <Text style={[styles.modeLabel, areaMgmtMode === 'single' ? styles.modeLabelActive : styles.modeLabelDim]}>Single</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modeRow, areaMgmtMode === 'multiple' && styles.modeRowActive]}
+                  onPress={() => trySetMode('multiple')}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.radioOuter, areaMgmtMode === 'multiple' && styles.radioOuterActive]}>
+                    {areaMgmtMode === 'multiple' && <View style={styles.radioInner} />}
+                  </View>
+                  <Text style={[styles.modeLabel, areaMgmtMode === 'multiple' ? styles.modeLabelActive : styles.modeLabelDim]}>Multiple</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Form Card */}
+              <View style={styles.areaMgmtFormCard}>
+
+                {areaMgmtMode === 'single' ? (
+                  <>
+                    <Text style={styles.areaMgmtFieldLabel}>Rack Code</Text>
+                    <TextInput
+                      style={styles.areaMgmtInput}
+                      placeholder="e.g. A1.1"
+                      value={singleCode}
+                      onChangeText={setSingleCode}
+                      autoCapitalize="characters"
+                      placeholderTextColor="#94a3b8"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.areaMgmtFieldLabel}>Prefix</Text>
+                    <TextInput
+                      style={styles.areaMgmtInput}
+                      placeholder="e.g. A1"
+                      value={multiPrefix}
+                      onChangeText={setMultiPrefix}
+                      autoCapitalize="characters"
+                      placeholderTextColor="#94a3b8"
+                    />
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.areaMgmtFieldLabel}>From</Text>
+                        <TextInput
+                          style={styles.areaMgmtInput}
+                          placeholder="1"
+                          value={multiFrom}
+                          onChangeText={setMultiFrom}
+                          keyboardType="number-pad"
+                          placeholderTextColor="#94a3b8"
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.areaMgmtFieldLabel}>To</Text>
+                        <TextInput
+                          style={styles.areaMgmtInput}
+                          placeholder="12"
+                          value={multiTo}
+                          onChangeText={setMultiTo}
+                          keyboardType="number-pad"
+                          placeholderTextColor="#94a3b8"
+                        />
+                      </View>
+                    </View>
+                    {multiRangeError ? (
+                      <View style={styles.validationError}>
+                        <Ionicons name="alert-circle-outline" size={13} color="#dc2626" />
+                        <Text style={styles.validationErrorText}>{multiRangeError}</Text>
+                      </View>
+                    ) : null}
+                    {multiCreateValid && (
+                      <Text style={styles.previewText}>
+                        {multiPrefix.trim().toUpperCase()}.{multiFromNum} → {multiPrefix.trim().toUpperCase()}.{multiToNum} ({multiToNum - multiFromNum + 1} racks)
+                      </Text>
+                    )}
+                  </>
+                )}
+
+                {/* Action Buttons */}
+                <View style={styles.areaMgmtActions}>
+                  {/* Delete */}
+                  {savingArea ? (
+                    <ActivityIndicator color="#dc2626" style={{ flex: 1 }} />
+                  ) : (
+                    <TouchableOpacity
+                      style={[
+                        styles.areaMgmtDeleteBtn,
+                        (areaMgmtMode === 'single' ? !singleHasData : !multiDeleteValid) && styles.areaMgmtBtnDisabled,
+                      ]}
+                      onPress={areaMgmtMode === 'single' ? handleSingleDelete : handleMultiDelete}
+                      disabled={savingArea || (areaMgmtMode === 'single' ? !singleHasData : !multiDeleteValid)}
+                    >
+                      <Ionicons name="trash-outline" size={14} color={areaMgmtMode === 'single' ? (singleHasData ? '#dc2626' : '#cbd5e1') : (multiDeleteValid ? '#dc2626' : '#cbd5e1')} />
+                      <Text style={[styles.areaMgmtDeleteBtnText, (areaMgmtMode === 'single' ? !singleHasData : !multiDeleteValid) && { color: '#cbd5e1' }]}>Delete</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Create */}
+                  {savingArea ? (
+                    <ActivityIndicator color="#059669" style={{ flex: 1 }} />
+                  ) : (
+                    <TouchableOpacity
+                      style={[
+                        styles.areaMgmtCreateBtn,
+                        (areaMgmtMode === 'single' ? !singleCodeValid : !multiCreateValid) && styles.areaMgmtBtnDisabled,
+                      ]}
+                      onPress={areaMgmtMode === 'single' ? handleSingleCreate : handleMultiCreate}
+                      disabled={savingArea || (areaMgmtMode === 'single' ? !singleCodeValid : !multiCreateValid)}
+                    >
+                      <Ionicons name="add-circle-outline" size={14} color={areaMgmtMode === 'single' ? (singleCodeValid ? '#fff' : '#a3b3b3') : (multiCreateValid ? '#fff' : '#a3b3b3')} />
+                      <Text style={[styles.areaMgmtCreateBtnText, (areaMgmtMode === 'single' ? !singleCodeValid : !multiCreateValid) && { color: '#a3b3b3' }]}>Create</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+              </View>
+
             </ScrollView>
           </View>
-        </Modal>
+        )}
 
       </View>
     </View>
@@ -1109,8 +1686,9 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     backgroundColor: '#1b4d3e',
   },
-  headerLeft: {},
+  headerLeft: { flex: 1, minWidth: 0 },
   headerTitle: { fontSize: 16, fontWeight: '800', color: '#fff' },
+  headerTitleCompact: { fontSize: 14 },
   roleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   headerSub: { fontSize: 9, color: '#a7f3d0', fontWeight: '600' },
   roleBadge: {
@@ -1123,14 +1701,44 @@ const styles = StyleSheet.create({
   roleAdmin: { backgroundColor: '#dc2626' },
   roleBadgeText: { color: '#ffffff', fontSize: 8, fontWeight: '800', textTransform: 'uppercase' },
 
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  headerActionsCompact: { gap: 4 },
+  selectModeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ecfdf5',
+    width: 74,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  selectModeButtonCompact: { width: 70, gap: 3 },
+  selectModeButtonText: { color: '#065f46', fontSize: 12, fontWeight: '800' },
+  selectModeButtonActive: {
+    backgroundColor: '#0f766e',
+  },
+  selectModeButtonTextActive: {
+    color: '#ffffff',
+  },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.15)',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     gap: 4,
+  },
+  logoutButtonCompact: {
+    paddingHorizontal: 7,
+    gap: 3,
   },
   logoutButtonText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
 
@@ -1154,45 +1762,68 @@ const styles = StyleSheet.create({
   searchContainer: {
     backgroundColor: '#1b4d3e',
     paddingHorizontal: 12,
-    paddingBottom: 10,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#143c30',
   },
   searchInputWrapper: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ffffff',
     borderRadius: 8,
     paddingHorizontal: 8,
-    height: 36,
+    height: 34,
+    marginRight: 6,
   },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  searchClearBtn: {
-    padding: 4,
-    marginLeft: 4,
-  },
-  searchIcon: { marginRight: 4 },
+  searchIcon: { marginRight: 4, flexShrink: 0 },
   searchInput: {
     flex: 1,
     fontSize: 12,
     color: '#1e293b',
     paddingVertical: 0,
     height: '100%',
+    minWidth: 0,
   },
-  searchClear: { padding: 4 },
+  searchHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 5,
+    paddingHorizontal: 2,
+  },
   searchHint: {
+    flex: 1,
     fontSize: 10,
     color: '#a7f3d0',
-    marginTop: 5,
     fontWeight: '600',
-    paddingLeft: 2,
   },
+  searchClearPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#a7f3d0',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginLeft: 8,
+  },
+  searchClearPillText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#065f46',
+  },
+  // legacy (unused but kept to avoid missing-key warnings)
+  searchClearBtn: { padding: 4 },
+  searchClear: { padding: 4 },
 
   // List
   listContent: { paddingBottom: 16, paddingLeft: 8, paddingRight: 16 },
+  listContentWithSelectBar: { paddingBottom: 96 },
   emptyContainer: { alignItems: 'center', justifyContent: 'center', minHeight: 200 },
   emptyText: { color: '#64748b', fontSize: 14, textAlign: 'center' },
 
@@ -1237,31 +1868,49 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
-  cellLocation: { fontSize: 8, fontWeight: '700', letterSpacing: 0.3 },
+  selectedRackCell: {
+    shadowColor: '#047857',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  cellLocation: { fontSize: 9, fontWeight: '800', letterSpacing: 0.3 },
+  cellLine1Container: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 2,
+    position: 'relative',
+  },
+  badgeContainer: {
+    position: 'absolute',
+    right: 2,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  badgeText: {
+    fontSize: 8,
+    fontWeight: '800',
+  },
   cellLot: { fontSize: 13, textAlign: 'center', marginTop: 1 },
   lotsWrapper: {
     alignItems: 'center',
     width: '100%',
-    marginTop: 2,
-  },
-  lotRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 3,
-    marginVertical: 1,
-  },
-  lotItem: {
-    paddingHorizontal: 1,
+    marginTop: 0,
   },
   cellLotGrid: {
-    fontSize: 11.5,
+    fontSize: 12,
     textAlign: 'center',
   },
-  cellLotPlus: {
-    fontSize: 10,
+  cellMeta: {
+    fontSize: 8,
     textAlign: 'center',
-    marginTop: 1,
+    marginTop: 2,
+    fontWeight: '600',
+    paddingHorizontal: 2,
   },
 
   modalOverlay: {
@@ -1310,11 +1959,18 @@ const styles = StyleSheet.create({
   },
   lotDetailHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 6,
   },
   lotDetailText: { fontSize: 16, fontWeight: '800', color: '#1e293b' },
   lotDetailSubText: { fontSize: 12, fontWeight: '600', color: '#475569', marginTop: 2 },
+  lotDetailMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 3,
+  },
+  lotDetailMetaText: { fontSize: 12, color: '#64748b', fontWeight: '500', flexShrink: 1 },
 
   lotActions: {
     flexDirection: 'row',
@@ -1393,7 +2049,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  confirmIconBgWarning: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#fffbeb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   confirmTitle: { fontSize: 18, fontWeight: '800', color: '#b91c1c', textAlign: 'center', marginBottom: 4 },
+  warningTitle: { fontSize: 18, fontWeight: '800', color: '#b45309', textAlign: 'center', marginBottom: 4 },
   confirmSubtitle: { fontSize: 13, color: '#475569', textAlign: 'center', marginBottom: 18, lineHeight: 18 },
   confirmDetails: {
     backgroundColor: '#f8fafc',
@@ -1416,6 +2081,12 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     overflow: 'hidden',
   },
+  bulkRackList: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '700',
+    lineHeight: 18,
+  },
   confirmDivider: { height: 1, backgroundColor: '#e2e8f0' },
   confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 20 },
   btnCancel: {
@@ -1430,6 +2101,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 8,
     backgroundColor: '#b91c1c',
+    minWidth: 90,
+    alignItems: 'center',
+  },
+  btnWarningConfirm: {
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    backgroundColor: '#d97706',
     minWidth: 90,
     alignItems: 'center',
   },
@@ -1484,6 +2163,52 @@ const styles = StyleSheet.create({
     minWidth: 100,
     alignItems: 'center',
   },
+
+  selectActionBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingTop: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#cbd5e1',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 12,
+  },
+  selectCancelButton: {
+    flex: 1,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+  },
+  selectCancelText: { color: '#475569', fontSize: 14, fontWeight: '800' },
+  selectDeleteButton: {
+    flex: 1,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 8,
+    backgroundColor: '#b91c1c',
+  },
+  selectDeleteButtonDisabled: {
+    backgroundColor: '#94a3b8',
+  },
+  selectDeleteText: { color: '#ffffff', fontSize: 14, fontWeight: '800' },
 
   // Empty rack
   emptyRackContainer: {
@@ -1603,118 +2328,262 @@ const styles = StyleSheet.create({
   manageAreasBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#ecfdf5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    width: 86,
+    paddingVertical: 6,
+    borderRadius: 8,
     gap: 4,
   },
+  manageAreasBtnCompact: { width: 82, gap: 3 },
   manageAreasBtnText: {
     color: '#065f46',
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '800',
   },
-  areaModalContainer: {
-    flex: 1,
+  // ── Manage Areas Inline Screen Styles ────────────────────────
+  areaMgmtScreen: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: '#f1f5f9',
+    zIndex: 100,
+    elevation: 100,
   },
-  areaModalHeader: {
+  areaMgmtHeader: {
     backgroundColor: '#1b4d3e',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     paddingHorizontal: 16,
-    paddingTop: 50,
-    paddingBottom: 16,
+    paddingVertical: 16,
+    gap: 14,
   },
-  areaModalTitle: {
+  areaMgmtTitle: {
     color: '#ffffff',
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '800',
   },
-  areaModalCloseBtn: {
+  areaMgmtCloseBtn: {
     padding: 4,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 6,
   },
-  areaModalContent: {
-    flex: 1,
+  areaMgmtBackBtn: {
+    padding: 4,
+    borderRadius: 6,
+  },
+  areaMgmtBody: {
     padding: 16,
+    paddingBottom: 40,
   },
-  areaFormCard: {
-    backgroundColor: '#ffffff',
+
+  // Switch Mode Banner
+  switchBanner: {
+    backgroundColor: '#fffbeb',
     borderRadius: 10,
-    padding: 16,
-    marginBottom: 20,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  switchBannerTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#92400e',
+    marginBottom: 2,
+  },
+  switchBannerSub: {
+    fontSize: 12,
+    color: '#b45309',
+    marginBottom: 12,
+  },
+  switchBannerActions: {
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'flex-end',
+  },
+  switchCancelBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+    borderRadius: 7,
+    backgroundColor: '#f1f5f9',
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
-  areaFormTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#334155',
-    marginBottom: 12,
+  switchCancelText: { color: '#64748b', fontSize: 12, fontWeight: '700' },
+  switchConfirmBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+    borderRadius: 7,
+    backgroundColor: '#d97706',
   },
-  areaFormRow: {
+  switchConfirmText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+
+  // Mode selector card
+  modeCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 8,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     flexDirection: 'row',
     gap: 8,
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 360,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  areaFormInputCode: {
+  modeRow: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    height: 40,
-  },
-  areaFormInputLabel: {
-    flex: 2,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    height: 40,
-  },
-  areaFormBtn: {
-    backgroundColor: '#059669',
-    justifyContent: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 6,
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
   },
-  areaFormBtnText: {
-    color: '#ffffff',
-    fontWeight: 'bold',
+  modeRowActive: {
+    backgroundColor: '#1b4d3e',
   },
-  areaListTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1e293b',
-    marginBottom: 12,
+  radioOuter: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  areaList: {
+  radioOuterActive: {
+    borderColor: '#ffffff',
+  },
+  radioInner: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: '#ffffff',
-    borderRadius: 10,
-    overflow: 'hidden',
+  },
+  modeLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  modeLabelActive: {
+    color: '#ffffff',
+  },
+  modeLabelDim: {
+    color: '#94a3b8',
+  },
+
+  // Form card
+  areaMgmtFormCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  areaListItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  areaItemCode: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#0f172a',
-  },
-  areaItemLabel: {
-    fontSize: 12,
-    color: '#64748b',
+  areaMgmtFieldLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#475569',
+    textTransform: 'uppercase',
+    marginBottom: 5,
     marginTop: 2,
   },
+  areaMgmtInput: {
+    borderWidth: 1.5,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: '#0f172a',
+    backgroundColor: '#f8fafc',
+    fontWeight: '600',
+  },
+
+  validationError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 6,
+    backgroundColor: '#fef2f2',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+  },
+  validationErrorText: {
+    fontSize: 12,
+    color: '#dc2626',
+    fontWeight: '600',
+  },
+  previewText: {
+    fontSize: 11,
+    color: '#059669',
+    fontWeight: '700',
+    marginTop: 6,
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 5,
+  },
+
+  areaMgmtActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 18,
+  },
+  areaMgmtDeleteBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#fca5a5',
+    backgroundColor: '#fef2f2',
+  },
+  areaMgmtDeleteBtnText: {
+    color: '#dc2626',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  areaMgmtCreateBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 8,
+    backgroundColor: '#059669',
+  },
+  areaMgmtCreateBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  areaMgmtBtnDisabled: {
+    opacity: 0.4,
+  },
+
+  // Legacy area list styles (kept for reference)
   areaItemDeleteBtn: {
     padding: 8,
   },

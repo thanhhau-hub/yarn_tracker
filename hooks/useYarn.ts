@@ -16,7 +16,7 @@ export function useYarn(yarnId: string) {
     // Fetch the yarn roll with its current area joined
     const { data: yarnData, error: yarnError } = await supabase
       .from('yarn_rolls')
-      .select('id, yarn_code, area_id, status, updated_at, areas(id, code, label, is_active)')
+      .select('id, yarn_code, area_id, updated_at, areas(id, code, label, is_active)')
       .eq('id', yarnId)
       .single();
 

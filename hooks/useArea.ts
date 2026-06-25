@@ -14,9 +14,8 @@ export function useArea(areaId: string) {
   async function fetchYarns() {
     const { data, error } = await supabase
       .from('yarn_rolls')
-      .select('id, yarn_code, area_id, status, updated_at')
+      .select('id, yarn_code, area_id, updated_at')
       .eq('area_id', areaId)
-      .eq('status', 'in_stock')
       .order('updated_at', { ascending: false });
 
     if (error) {

@@ -7,7 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export type UserRole = 'worker' | 'supervisor' | 'admin';
 
 type AuthContextType = {
-  session: Session | null;
+  session: Session | null | undefined;
   user: User | null;
   role: UserRole | null;
   loading: boolean;
@@ -29,7 +29,7 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [isGuest, setIsGuest] = useState(false);

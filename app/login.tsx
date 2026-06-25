@@ -43,7 +43,7 @@ export default function LoginScreen() {
     }
 
     if (!isValidEmail(email)) {
-      Alert.alert('Invalid Email', 'Please enter a valid work email address (e.g., name@deltagalil.com).');
+      Alert.alert('Invalid Email', 'Please enter a valid work email address.');
       return;
     }
 
@@ -120,7 +120,7 @@ export default function LoginScreen() {
               disabled={loading}
               activeOpacity={0.85}
             >
-              <Text style={styles.guestButtonText}>CONTINUE AS GUEST</Text>
+              <Text style={styles.guestButtonText}>CONTINUE AS WORKER</Text>
             </TouchableOpacity>
 
             <View style={styles.divider}>

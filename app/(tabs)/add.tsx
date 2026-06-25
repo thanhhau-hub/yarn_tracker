@@ -33,6 +33,8 @@ export default function AddScreen() {
   const [locationQuery, setLocationQuery] = useState('');
   const [selectedAreaId, setSelectedAreaId] = useState<string | null>(null);
   const [selectedAreaCode, setSelectedAreaCode] = useState<string>('');
+  const [newColor, setNewColor] = useState('');
+  const [newDesc, setNewDesc] = useState('');
 
 
   const [allAreas, setAllAreas] = useState<Area[]>([]);
@@ -156,7 +158,8 @@ export default function AddScreen() {
         .insert({
           yarn_code: finalCode,
           area_id: selectedAreaId,
-          status: 'in_stock',
+          color: newColor.trim() || null,
+          description: newDesc.trim() || null,
         })
         .select()
         .single();
@@ -187,6 +190,9 @@ export default function AddScreen() {
 
       setSaving(false);
       setLastRegistered({ lot: baseCode, area: selectedAreaCode });
+      setLotNumber('');
+      setNewColor('');
+      setNewDesc('');
       setIsSuccess(true);
     } catch (err: any) {
       Alert.alert('Error', err.message || 'An unexpected error occurred.');
@@ -285,6 +291,40 @@ export default function AddScreen() {
               value={lotNumber}
               onChangeText={setLotNumber}
               autoCapitalize="characters"
+              placeholderTextColor="#a0aec0"
+              returnKeyType="next"
+            />
+          </View>
+        </View>
+
+        <View style={styles.fieldCard}>
+          <Text style={styles.fieldLabel}>
+            <Ionicons name="color-palette-outline" size={13} color="#1b4d3e" />
+            {'  '}Color (Optional)
+          </Text>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter Color"
+              value={newColor}
+              onChangeText={setNewColor}
+              placeholderTextColor="#a0aec0"
+              returnKeyType="next"
+            />
+          </View>
+        </View>
+
+        <View style={styles.fieldCard}>
+          <Text style={styles.fieldLabel}>
+            <Ionicons name="document-text-outline" size={13} color="#1b4d3e" />
+            {'  '}Description (Optional)
+          </Text>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter Description"
+              value={newDesc}
+              onChangeText={setNewDesc}
               placeholderTextColor="#a0aec0"
               returnKeyType="done"
               onSubmitEditing={handleInitSave}
@@ -526,18 +566,19 @@ const styles = StyleSheet.create({
 
   // Modal action buttons
   modalActions: {
-    flexDirection: 'row', justifyContent: 'flex-end',
+    flexDirection: 'row', justifyContent: 'space-between',
     gap: 10, marginTop: 22, width: '100%',
   },
   btnSecondary: {
-    paddingVertical: 11, paddingHorizontal: 20,
+    flex: 1, paddingVertical: 12, paddingHorizontal: 12,
     borderRadius: 9, backgroundColor: '#f1f5f9',
+    alignItems: 'center', justifyContent: 'center',
   },
   btnSecondaryText: { color: '#475569', fontSize: 13, fontWeight: '700' },
   btnPrimary: {
-    paddingVertical: 11, paddingHorizontal: 20,
+    flex: 1, paddingVertical: 12, paddingHorizontal: 12,
     borderRadius: 9, backgroundColor: '#1b4d3e',
-    minWidth: 120, alignItems: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
   btnPrimaryText: { color: '#ffffff', fontSize: 13, fontWeight: '700' },
 });

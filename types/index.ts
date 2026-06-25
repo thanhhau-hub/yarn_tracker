@@ -16,9 +16,10 @@ export type YarnRoll = {
   id: string;
   yarn_code: string;  // LOT number e.g. "K446", "3310"
   area_id: string | null;   // null = not on the floor
-  status: 'in_stock' | 'retrieved' | 'consumed';
+
   color?: string | null;
   description?: string | null;
+  is_deleted?: boolean;
   updated_at: string;
 
   // Joined fields (when fetched with area data)

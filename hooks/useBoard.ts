@@ -39,7 +39,7 @@ export function useBoard(session: Session | null | undefined) {
     const controller = new AbortController();
     inFlightRef.current = controller;
     lastFetchStartedAtRef.current = now;
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 8s timeout
 
     console.log('[useBoard] Fetching board data... session user:', currentSession?.user?.email ?? 'guest');
 
@@ -52,7 +52,9 @@ export function useBoard(session: Session | null | undefined) {
             id,
             yarn_code,
             area_id,
-            status,
+            color,
+            description,
+            is_deleted,
             updated_at
           )
         `)
@@ -77,7 +79,7 @@ export function useBoard(session: Session | null | undefined) {
       console.log('[useBoard] Got', data?.length, 'areas');
       const formatted: AreaWithCount[] = (data || []).map((area: any) => {
         const activeYarns = (area.yarn_rolls || []).filter(
-          (y: any) => y.status === 'in_stock'
+          (y: any) => y.is_deleted !== true
         );
         return {
           ...area,
@@ -100,7 +102,7 @@ export function useBoard(session: Session | null | undefined) {
       }
 
       console.error('Board fetch error:', err);
-      setError(err.message);
+      setError('The network connection is unstable');
     } finally {
       if (inFlightRef.current === controller) {
         inFlightRef.current = null;

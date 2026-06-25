@@ -36,8 +36,7 @@ export default function SearchScreen() {
 
     const { data, error } = await supabase
       .from('yarn_rolls')
-      .select('id, yarn_code, color, description, area_id, status, updated_at, areas(id, code, label)')
-      .eq('status', 'in_stock')
+      .select('id, yarn_code, color, description, area_id, updated_at, areas(id, code, label)')
       .not('area_id', 'is', null)
       .or(`yarn_code.ilike.%${trimmed}%,color.ilike.%${trimmed}%,description.ilike.%${trimmed}%`)
       .order('updated_at', { ascending: false })

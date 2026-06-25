@@ -35,6 +35,24 @@ export default function TabLayout() {
         headerStyle: { backgroundColor: '#1b4d3e' },
         headerTintColor: '#fff',
         headerTitleStyle: { fontWeight: '700' },
+        headerLeft: ({ canGoBack }) => {
+          return (
+            <Ionicons
+              name="arrow-back"
+              size={24}
+              color="#fff"
+              style={{ marginLeft: 16 }}
+              onPress={() => {
+                const router = require('expo-router').router;
+                if (canGoBack) {
+                  router.back();
+                } else {
+                  router.push('/');
+                }
+              }}
+            />
+          );
+        },
       }}
     >
       <Tabs.Screen
@@ -81,7 +99,7 @@ export default function TabLayout() {
           headerTitle: 'Management Dashboard',
           href: isAdmin ? undefined : null,
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings-outline" size={size} color={color} />
+            <Ionicons name="people-outline" size={size} color={color} />
           ),
         }}
       />

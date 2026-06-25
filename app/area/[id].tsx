@@ -37,7 +37,7 @@ export default function AreaDetailScreen() {
       <View style={styles.lotCard}>
         <View style={styles.lotLeft}>
           <Text style={styles.lotCode}>LOT: {cleanedCode}</Text>
-          <Text style={styles.lotMeta}>Status: {item.status}</Text>
+
         </View>
         <View style={styles.lotActions}>
           <TouchableOpacity

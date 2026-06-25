@@ -23,3 +23,19 @@ export const supabase = createClient(
     },
   }
 );
+
+// We create a separate client for signup to avoid logging out the current admin session
+// It uses the same safe React Native storage/lock mechanisms to prevent infinite hanging
+export const adminAuthClient = createClient(
+  isSupabaseConfigured ? SUPABASE_URL : 'https://missing-config.supabase.co',
+  isSupabaseConfigured ? SUPABASE_ANON_KEY : 'missing-config',
+  {
+    auth: {
+      ...(Platform.OS !== 'web' ? { storage: AsyncStorage, lock: processLock } : {}),
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  }
+);
+

@@ -34,12 +34,21 @@ export default function MoveYarnScreen() {
 
   useEffect(() => {
     async function loadData() {
+      if (!id) {
+        setLoading(false);
+        return;
+      }
+
       // Fetch the lot being moved with its current area.
-      const { data: yarnData } = await supabase
+      const { data: yarnData, error: yarnError } = await supabase
         .from('yarn_rolls')
-        .select('id, yarn_code, area_id, status, updated_at, areas(id, code, label, is_active)')
+        .select('id, yarn_code, area_id, updated_at, areas(id, code, label, is_active)')
         .eq('id', id)
-        .single();
+        .maybeSingle();
+
+      if (yarnError) {
+        console.error('[Move] Error fetching yarn:', yarnError.message);
+      }
 
       // Fetch all active areas
       const { data: areaData } = await supabase
@@ -146,6 +155,13 @@ export default function MoveYarnScreen() {
       <View style={styles.centered}>
         <Ionicons name="alert-circle-outline" size={48} color="#cbd5e1" />
         <Text style={styles.notFound}>LOT not found.</Text>
+        <Text style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>ID: {id}</Text>
+        <TouchableOpacity
+          onPress={() => router.replace('/')}
+          style={{ marginTop: 16, backgroundColor: '#1b4d3e', borderRadius: 8, paddingVertical: 10, paddingHorizontal: 20 }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>← Back to Board</Text>
+        </TouchableOpacity>
       </View>
     );
   }
