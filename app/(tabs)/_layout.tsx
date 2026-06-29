@@ -8,8 +8,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
  * Tab navigation layout.
  * 
  * Dynamically shows/hides tabs based on user role:
- * - Admin/Supervisor: Board, Add, History, Admin
- * - Guest (User):     Board, History
+ * - Admin/Supervisor: Board, History, Manage
+ * - Worker/Guest:     Board, History
+ *
+ * Add Lot is handled via popup modal when tapping an empty rack cell.
  */
 export default function TabLayout() {
   const { role, loading } = useRole();
@@ -18,7 +20,6 @@ export default function TabLayout() {
   // Do not conditionally return a View here! It breaks Expo Router.
   // The layout must always return the <Tabs> component.
 
-  const canManage = role === 'supervisor' || role === 'admin';
   const isAdmin = role === 'admin';
 
   return (
@@ -66,20 +67,6 @@ export default function TabLayout() {
         }}
       />
 
-      {/* Add tab: only visible to Supervisors/Admins */}
-      <Tabs.Screen
-        name="add"
-        options={{
-          title: 'Add',
-          headerTitle: 'Add Lot',
-          // Hide from Guests by removing it from the tab bar
-          href: canManage ? undefined : null,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="add-circle-outline" size={size} color={color} />
-          ),
-        }}
-      />
-
       <Tabs.Screen
         name="history"
         options={{
@@ -108,10 +95,6 @@ export default function TabLayout() {
       <Tabs.Screen
         name="search"
         options={{ href: null }}
-      />
-      <Tabs.Screen
-        name="move/[id]"
-        options={{ href: null, title: 'Move Lot' }}
       />
     </Tabs>
   );

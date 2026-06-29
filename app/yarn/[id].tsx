@@ -31,6 +31,12 @@ export default function YarnHistoryScreen() {
   }
 
   /** Parse the JSON-encoded note field safely */
+  function formatOperatorName(operator: string) {
+    const trimmed = operator.trim();
+    if (!trimmed || trimmed === 'Operator') return 'Operator';
+    return trimmed.includes('@') ? trimmed.split('@')[0] : trimmed;
+  }
+
   function parseNote(note: string | null) {
     let action = 'MOVE';
     let operator = 'Operator';
@@ -55,7 +61,7 @@ export default function YarnHistoryScreen() {
     if (action === 'Moved') action = 'MOVE';
     if (action === 'Deleted') action = 'DELETE';
     if (action === 'Edited') action = 'EDIT';
-    return { action, operator, details };
+    return { action, operator: formatOperatorName(operator), details };
   }
 
   function getActionStyle(action: string) {

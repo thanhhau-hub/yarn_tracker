@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, ScrollView, ActivityIndicator, Platform, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase, adminAuthClient } from '../../lib/supabase';
 import { useRole } from '../../hooks/useRole';
@@ -16,11 +16,17 @@ export default function AdminScreen() {
   // New User Form State
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newRole, setNewRole] = useState<'supervisor' | 'admin'>('supervisor');
   const [creating, setCreating] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Custom Modal State
+  // Edit Password State (Quản lý thay đổi mật khẩu)
+  const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
+  const [newPasswordForEdit, setNewPasswordForEdit] = useState('');
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [showEditPassword, setShowEditPassword] = useState(false);
+
+  // Custom Modal State (Thông báo hệ thống)
   const [modalConfig, setModalConfig] = useState<{
     visible: boolean;
     type: 'success' | 'error' | 'confirm';
@@ -56,7 +62,7 @@ export default function AdminScreen() {
       return;
     }
     
-    const msg = `Create account for ${newEmail.trim()} as ${newRole}?`;
+    const msg = `Create supervisor account for ${newEmail.trim()}?`;
     showConfirm('Confirm', msg, () => {
       setModalConfig(null);
       setTimeout(executeCreateUser, 300);
@@ -66,13 +72,12 @@ export default function AdminScreen() {
   async function executeCreateUser() {
     setCreating(true);
     try {
-      // Create user using the separate client
       const { data, error } = await adminAuthClient.auth.signUp({
         email: newEmail.trim(),
         password: newPassword,
         options: {
           data: {
-            role: newRole,
+            role: 'supervisor',
           }
         }
       });
@@ -91,8 +96,6 @@ export default function AdminScreen() {
         return;
       }
       
-      // The database trigger normally creates this profile. Upsert keeps the
-      // admin screen reliable even if the trigger is delayed or missing.
       await new Promise(res => setTimeout(res, 500));
       const { error: profileError } = await supabase
         .from('profiles')
@@ -100,7 +103,7 @@ export default function AdminScreen() {
           id: newUserId,
           email: newEmail.trim(),
           full_name: newEmail.trim().split('@')[0],
-          role: newRole,
+          role: 'supervisor',
         }, { onConflict: 'id' });
 
       if (profileError) {
@@ -109,10 +112,9 @@ export default function AdminScreen() {
         return;
       }
 
-      showAlert('success', 'Created', 'New user added.');
+      showAlert('success', 'Created', 'New supervisor added.');
       setNewEmail('');
       setNewPassword('');
-      setNewRole('supervisor');
       fetchProfiles();
     } catch (err: any) {
       showAlert('error', 'Error', err.message);
@@ -121,6 +123,39 @@ export default function AdminScreen() {
     }
   }
 
+  // Hàm gọi RPC để cập nhật mật khẩu mới của Supervisor an toàn
+  async function handleUpdatePassword() {
+    if (!editingProfile) return;
+    if (!newPasswordForEdit.trim()) {
+      showAlert('error', 'Validation Error', 'Password cannot be empty.');
+      return;
+    }
+
+    setUpdatingPassword(true);
+    try {
+      const { error } = await supabase.rpc('admin_update_supervisor_password', {
+        target_user_id: editingProfile.id,
+        new_password: newPasswordForEdit.trim()
+      });
+
+      if (error) {
+        showAlert('error', 'Update Failed', error.message || 'Could not update password.');
+        return;
+      }
+
+      setIsEditModalVisible(false);
+      setNewPasswordForEdit('');
+      setEditingProfile(null);
+      
+      setTimeout(() => {
+        showAlert('success', 'Updated', 'Password updated successfully.');
+      }, 300);
+    } catch (err: any) {
+      showAlert('error', 'Error', err.message || 'An unexpected error occurred.');
+    } finally {
+      setUpdatingPassword(false);
+    }
+  }
 
   if (roleLoading) return <View style={styles.center}><ActivityIndicator size="large" color="#1b4d3e" /></View>;
   if (role !== 'admin') {
@@ -137,7 +172,7 @@ export default function AdminScreen() {
       <ScrollView style={styles.content} keyboardShouldPersistTaps="handled">
         {/* Create User Form */}
         <View style={styles.createCard}>
-          <Text style={styles.cardTitle}>Create New Account</Text>
+          <Text style={styles.cardTitle}>Create New Supervisor</Text>
           
           <View style={styles.inputGroup}>
             <View style={styles.inputWrapper}>
@@ -152,7 +187,7 @@ export default function AdminScreen() {
               />
             </View>
             <View style={styles.inputWrapper}>
-              <Ionicons name="person-outline" size={20} color="#64748b" style={styles.inputIcon} />
+              <Ionicons name="key-outline" size={20} color="#64748b" style={styles.inputIcon} />
               <TextInput
                 style={styles.inputWithIcon}
                 placeholder="Password"
@@ -166,21 +201,8 @@ export default function AdminScreen() {
             </View>
           </View>
 
-          <Text style={styles.roleLabel}>Select Role:</Text>
-          <View style={styles.roleSelector}>
-            {(['supervisor', 'admin'] as const).map(r => (
-              <TouchableOpacity
-                key={r}
-                style={[styles.roleSelectBtn, newRole === r && styles.roleSelectBtnActive]}
-                onPress={() => setNewRole(r)}
-              >
-                <Text style={[styles.roleSelectText, newRole === r && styles.roleSelectTextActive]}>{r}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
           <TouchableOpacity style={styles.createBtn} onPress={handleCreateUser} disabled={creating}>
-            {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.createBtnText}>Create Account</Text>}
+            {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.createBtnText}>Create Supervisor</Text>}
           </TouchableOpacity>
         </View>
 
@@ -192,76 +214,174 @@ export default function AdminScreen() {
           profiles.map(p => (
             <View key={p.id} style={styles.listItem}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.itemTitle}>{p.full_name || 'No Name'} ({p.role})</Text>
+                <View style={styles.nameRow}>
+                  <Text style={styles.itemTitle}>{p.full_name || 'No Name'}</Text>
+                  <View style={[
+                    styles.roleBadge,
+                    p.role === 'admin' ? styles.badgeAdmin : styles.badgeSupervisor
+                  ]}>
+                    <Text style={[
+                      styles.roleBadgeText,
+                      p.role === 'admin' ? styles.badgeTextAdmin : styles.badgeTextSupervisor
+                    ]}>
+                      {p.role}
+                    </Text>
+                  </View>
+                </View>
                 <Text style={styles.itemSub}>{p.email}</Text>
               </View>
+
+              {/* Chỉ cho phép đổi mật khẩu khi vai trò là supervisor */}
+              {p.role === 'supervisor' && (
+                <TouchableOpacity
+                  style={styles.editIconBtn}
+                  onPress={() => {
+                    setEditingProfile(p);
+                    setNewPasswordForEdit('');
+                    setIsEditModalVisible(true);
+                  }}
+                >
+                  <Ionicons name="pencil-outline" size={18} color="#1b4d3e" />
+                </TouchableOpacity>
+              )}
             </View>
           ))
         )}
       </ScrollView>
 
-      {/* Custom Modal for Alerts/Confirms */}
-      <Modal
-        visible={modalConfig?.visible || false}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setModalConfig(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            {/* Icon */}
-            <View style={[
-              styles.modalIconBg,
-              modalConfig?.type === 'success' ? { backgroundColor: '#e8f5e9' }
-              : modalConfig?.type === 'error' ? { backgroundColor: '#fef2f2' }
-              : { backgroundColor: '#e8f5e9' },
-            ]}>
-              <Ionicons
-                name={
-                  modalConfig?.type === 'success' ? 'checkmark-circle'
-                  : modalConfig?.type === 'error' ? 'close-circle'
-                  : 'help-circle'
-                }
-                size={40}
-                color={
-                  modalConfig?.type === 'success' ? '#1b4d3e'
-                  : modalConfig?.type === 'error' ? '#dc2626'
-                  : '#1b4d3e'
-                }
-              />
-            </View>
+      {/* Edit Password Modal */}
+      {isEditModalVisible && (
+        <Modal
+          visible={true}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setIsEditModalVisible(false);
+            setNewPasswordForEdit('');
+            setEditingProfile(null);
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <View style={[styles.modalIconBg, { backgroundColor: '#eff6ff' }]}>
+                <Ionicons name="key-outline" size={40} color="#2563eb" />
+              </View>
 
-            {/* Title */}
-            <Text style={[
-              styles.modalTitle,
-              modalConfig?.type === 'error' ? { color: '#dc2626' } : { color: '#1b4d3e' },
-            ]}>
-              {modalConfig?.title}
-            </Text>
+              <Text style={[styles.modalTitle, { color: '#1e293b' }]}>
+                Change Password
+              </Text>
 
-            {/* Message */}
-            <Text style={styles.modalSubtitle}>{modalConfig?.message}</Text>
+              <Text style={styles.modalSubtitle}>
+                Set a new password for {editingProfile?.email}
+              </Text>
 
-            {/* Actions */}
-            <View style={styles.modalActions}>
-              {modalConfig?.type === 'confirm' ? (
-                <>
-                  <TouchableOpacity style={styles.btnSecondary} onPress={() => setModalConfig(null)}>
-                    <Text style={styles.btnSecondaryText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.btnPrimary} onPress={modalConfig.onConfirm}>
-                    <Text style={styles.btnPrimaryText}>Confirm</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={() => setModalConfig(null)}>
-                  <Text style={styles.btnPrimaryText}>OK</Text>
+              <View style={[styles.inputWrapper, { marginBottom: 20, width: '100%' }]}>
+                <Ionicons name="lock-closed-outline" size={20} color="#64748b" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.inputWithIcon}
+                  placeholder="New Password"
+                  value={newPasswordForEdit}
+                  onChangeText={setNewPasswordForEdit}
+                  secureTextEntry={!showEditPassword}
+                />
+                <TouchableOpacity onPress={() => setShowEditPassword(!showEditPassword)} style={styles.eyeIcon}>
+                  <Ionicons name={showEditPassword ? "eye-outline" : "eye-off-outline"} size={20} color="#64748b" />
                 </TouchableOpacity>
-              )}
+              </View>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.btnSecondary}
+                  onPress={() => {
+                    setIsEditModalVisible(false);
+                    setNewPasswordForEdit('');
+                    setEditingProfile(null);
+                  }}
+                  disabled={updatingPassword}
+                >
+                  <Text style={styles.btnSecondaryText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.btnPrimary}
+                  onPress={handleUpdatePassword}
+                  disabled={updatingPassword}
+                >
+                  {updatingPassword ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.btnPrimaryText}>Update</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
+
+      {/* Custom Modal for Alerts/Confirms */}
+      {modalConfig?.visible && (
+        <Modal
+          visible={true}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setModalConfig(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              {/* Icon */}
+              <View style={[
+                styles.modalIconBg,
+                modalConfig?.type === 'success' ? { backgroundColor: '#e8f5e9' }
+                : modalConfig?.type === 'error' ? { backgroundColor: '#fef2f2' }
+                : { backgroundColor: '#e8f5e9' },
+              ]}>
+                <Ionicons
+                  name={
+                    modalConfig?.type === 'success' ? 'checkmark-circle'
+                    : modalConfig?.type === 'error' ? 'close-circle'
+                    : 'help-circle'
+                  }
+                  size={40}
+                  color={
+                    modalConfig?.type === 'success' ? '#1b4d3e'
+                    : modalConfig?.type === 'error' ? '#dc2626'
+                    : '#1b4d3e'
+                  }
+                />
+              </View>
+
+              {/* Title */}
+              <Text style={[
+                styles.modalTitle,
+                modalConfig?.type === 'error' ? { color: '#dc2626' } : { color: '#1b4d3e' },
+              ]}>
+                {modalConfig?.title}
+              </Text>
+
+              {/* Message */}
+              <Text style={styles.modalSubtitle}>{modalConfig?.message}</Text>
+
+              {/* Actions */}
+              <View style={styles.modalActions}>
+                {modalConfig?.type === 'confirm' ? (
+                  <>
+                    <TouchableOpacity style={styles.btnSecondary} onPress={() => setModalConfig(null)}>
+                      <Text style={styles.btnSecondaryText}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.btnPrimary} onPress={modalConfig.onConfirm}>
+                      <Text style={styles.btnPrimaryText}>Confirm</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity style={[styles.btnPrimary, { flex: 1 }]} onPress={() => setModalConfig(null)}>
+                    <Text style={styles.btnPrimaryText}>OK</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -281,20 +401,31 @@ const styles = StyleSheet.create({
   inputIcon: { paddingLeft: 12 },
   inputWithIcon: { flex: 1, padding: 12, fontSize: 14, color: '#0f172a' },
   eyeIcon: { padding: 12 },
-  roleLabel: { fontSize: 13, fontWeight: '600', color: '#475569', marginBottom: 8 },
-  roleSelector: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  roleSelectBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8, borderWidth: 1, borderColor: '#cbd5e1', backgroundColor: '#f8fafc' },
-  roleSelectBtnActive: { borderColor: '#1b4d3e', backgroundColor: '#e8f5e9' },
-  roleSelectText: { fontSize: 13, color: '#64748b', textTransform: 'capitalize', fontWeight: '500' },
-  roleSelectTextActive: { color: '#1b4d3e', fontWeight: 'bold' },
   createBtn: { backgroundColor: '#1b4d3e', padding: 14, borderRadius: 8, alignItems: 'center' },
   createBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
   
   sectionTitle: { fontSize: 16, fontWeight: '700', color: '#1e293b', marginBottom: 12 },
   listItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   itemTitle: { fontSize: 15, fontWeight: '700', color: '#1e293b' },
   itemSub: { fontSize: 13, color: '#64748b', marginTop: 2 },
-  iconBtn: { padding: 8, backgroundColor: '#fee2e2', borderRadius: 6, marginLeft: 12 },
+  
+  // Custom Role Badges (Kiểu hiển thị thẻ màu thay cho chữ text thường)
+  roleBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeAdmin: { backgroundColor: '#fee2e2' },
+  badgeSupervisor: { backgroundColor: '#ffedd5' },
+  roleBadgeText: { fontSize: 11, fontWeight: '700', textTransform: 'capitalize' },
+  badgeTextAdmin: { color: '#dc2626' },
+  badgeTextSupervisor: { color: '#ea580c' },
+
+  // Nút bút chì dùng để Edit Password
+  editIconBtn: { padding: 8, backgroundColor: '#e8f5e9', borderRadius: 8, marginLeft: 12 },
   
   // Modal styles
   modalOverlay: {

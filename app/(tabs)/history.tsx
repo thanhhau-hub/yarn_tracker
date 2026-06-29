@@ -10,34 +10,20 @@ import {
   AppState,
 } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { supabase } from '../../lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { useHistory, HistoryItem } from '../../hooks/useHistory';
+import { useNetwork } from '../../hooks/useNetwork';
 import DatePicker from '../../components/DatePicker';
 
 /**
  * Warehouse History Screen
  * 
- * Reads directly from move_logs — does NOT join yarn_rolls.
- * This means records persist even after lots are deleted.
- * Shows: Action Type, Yarn Code, From/To Area, User, Timestamp.
- * History is read-only (no deletion allowed from UI).
+ * Displays log activities: CREATE, EDIT, and DELETE.
+ * Dynamically adjusts UI based on the presence of COLOR and DESCRIPTION.
  */
 
-type HistoryItem = {
-  id: string;
-  yarn_roll_id: string | null;
-  action: string | null;
-  yarn_code: string | null;
-  from_area_code: string | null;
-  to_area_code: string | null;
-  moved_at: string;
-  note: string | null;
-  moved_by: string | null;
-};
-
 export default function HistoryScreen() {
-  const [logs, setLogs] = useState<HistoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { isOnline } = useNetwork();
   const [refreshing, setRefreshing] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
@@ -52,73 +38,22 @@ export default function HistoryScreen() {
     return `${String(d.getDate()).padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}`;
   };
 
-  async function fetchHistory(isSilent = false, retryCount = 0) {
-    if (!isSilent && retryCount === 0) setLoading(true);
+  const { logs, loading, error, fetchHistory } = useHistory(fromDate, toDate);
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
-
-    let query = supabase
-      .from('move_logs')
-      .select(`
-        id,
-        yarn_roll_id,
-        action,
-        yarn_code,
-        from_area_code,
-        to_area_code,
-        moved_at,
-        note,
-        moved_by
-      `)
-      .order('moved_at', { ascending: false })
-      .limit(200)
-      .abortSignal(controller.signal);
-
-    if (fromDate && fromDate.length === 10) {
-      query = query.gte('moved_at', fromDate + 'T00:00:00.000Z');
-    }
-    if (toDate && toDate.length === 10) {
-      query = query.lte('moved_at', toDate + 'T23:59:59.999Z');
-    }
-
-    try {
-      const { data, error } = await query;
-      clearTimeout(timeoutId);
-
-      if (!error && data) {
-        setLogs(data as unknown as HistoryItem[]);
-      } else if (error) {
-        throw error;
-      }
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err.name === 'AbortError' && retryCount < 1) {
-        console.warn('fetchHistory timed out, retrying...');
-        return fetchHistory(isSilent, retryCount + 1);
-      }
-      console.warn('fetchHistory error:', err.message);
-    } finally {
-      if (retryCount === 0) setLoading(false);
-    }
-  }
-
-  // Reload history when screen is focused
   useFocusEffect(
     useCallback(() => {
       fetchHistory();
-    }, [fromDate, toDate])
+    }, [fromDate, toDate, fetchHistory])
   );
 
-  // Background return listener
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
-        fetchHistory(true); // silent fetch
+        fetchHistory(true);
       }
     });
     return () => subscription.remove();
-  }, [fromDate, toDate]);
+  }, [fetchHistory]);
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -126,15 +61,34 @@ export default function HistoryScreen() {
     setRefreshing(false);
   }
 
-  // Parse note JSON safely
+  function formatOperatorName(operator: string) {
+    const trimmed = operator.trim();
+    if (!trimmed || trimmed === 'Operator') return 'Operator';
+    return trimmed.includes('@') ? trimmed.split('@')[0] : trimmed;
+  }
+
   function parseLogDetails(item: HistoryItem) {
-    let action = 'MOVE';
+    let action = 'EDIT';
     let operator = 'Operator';
     let details = '';
+    let color = '';
+    let des = '';
+    let lotCode = '';
 
-    if (item.action) action = item.action;
-    else if (!item.from_area_code && item.to_area_code) action = 'CREATE';
-    else if (item.from_area_code && !item.to_area_code) action = 'DELETE';
+    let oldLot = '';
+    let newLot = '';
+    let oldColor = '';
+    let newColor = '';
+    let oldDes = '';
+    let newDes = '';
+
+    if (item.action) {
+      action = item.action;
+    } else if (!item.from_area_code && item.to_area_code) {
+      action = 'CREATE';
+    } else if (item.from_area_code && !item.to_area_code) {
+      action = 'DELETE';
+    }
 
     if (item.note) {
       const trimmedNote = item.note.trim();
@@ -144,41 +98,72 @@ export default function HistoryScreen() {
           if (parsed.action) action = parsed.action;
           if (parsed.operator) operator = parsed.operator;
           if (parsed.details) details = parsed.details;
-          else details = '';
+
+          // Extract Old Values
+          if (parsed.old && typeof parsed.old === 'object') {
+            oldLot = cleanLot(parsed.old.lot || parsed.old.yarn_code || parsed.old.lotCode || '');
+            oldColor = parsed.old.color || parsed.old.yarn_color || '';
+            oldDes = parsed.old.des || parsed.old.description || parsed.old.yarn_description || '';
+          } else {
+            oldLot = cleanLot(parsed.old_lot || parsed.old_yarn_code || parsed.old_lot_code || parsed.oldLot || '');
+            oldColor = parsed.old_color || parsed.old_yarn_color || parsed.oldColor || '';
+            oldDes = parsed.old_des || parsed.old_description || parsed.old_yarn_description || parsed.oldDes || '';
+          }
+
+          // Extract New Values
+          if (parsed.new && typeof parsed.new === 'object') {
+            newLot = cleanLot(parsed.new.lot || parsed.new.yarn_code || parsed.new.lotCode || '');
+            newColor = parsed.new.color || parsed.new.yarn_color || '';
+            newDes = parsed.new.des || parsed.new.description || parsed.new.yarn_description || '';
+          } else {
+            newLot = cleanLot(parsed.lot || parsed.yarn_code || parsed.lotCode || parsed.new_lot || parsed.new_yarn_code || parsed.newLot || '');
+            newColor = parsed.new_color || parsed.color || parsed.yarn_color || parsed.newColor || '';
+            newDes = parsed.new_des || parsed.des || parsed.description || parsed.yarn_description || parsed.newDes || '';
+          }
         } catch (e) {
-          // Fallback to legacy
+          // Fallback
         }
+      } else {
+        details = item.note;
       }
     }
 
-    if (action === 'Added') action = 'CREATE';
-    if (action === 'Moved') action = 'MOVE';
-    if (action === 'Deleted') action = 'DELETE';
-    if (action === 'Edited') action = 'EDIT';
+    const rawItem = item as any;
+    
+    // Fallbacks if not set in JSON note
+    if (!newLot) newLot = cleanLot(rawItem.yarn_code || rawItem.lot || '');
+    if (!newColor) newColor = rawItem.color || '';
+    if (!newDes) newDes = rawItem.des || rawItem.description || '';
 
-    return { action, operator, details };
+    color = newColor;
+    des = newDes;
+    lotCode = newLot;
+
+    return { 
+      action, 
+      operator: formatOperatorName(operator), 
+      details, 
+      color, 
+      des, 
+      lotCode,
+      oldLot,
+      newLot,
+      oldColor,
+      newColor,
+      oldDes,
+      newDes
+    };
   }
 
   function getActionBadge(action: string) {
     switch (action) {
       case 'CREATE':
-        return { bg: '#e8f5e9', text: '#2e7d32', icon: 'add-circle-outline' as const };
-      case 'MOVE':
-        return { bg: '#e3f2fd', text: '#1565c0', icon: 'swap-horizontal-outline' as const };
+        return { bg: '#e8f5e9', text: '#2e7d32', label: 'CREATE', icon: 'add-circle-outline' as const };
       case 'DELETE':
-        return { bg: '#ffebee', text: '#c62828', icon: 'trash-outline' as const };
+        return { bg: '#ffebee', text: '#c62828', label: 'DELETE', icon: 'trash-outline' as const };
       case 'EDIT':
-        return { bg: '#fff8e1', text: '#f57f17', icon: 'create-outline' as const };
-      case 'ROLE_CHANGE':
-        return { bg: '#f3e8ff', text: '#7c3aed', icon: 'people-outline' as const };
-      case 'AREA_CREATE':
-        return { bg: '#e0f7fa', text: '#00796b', icon: 'location-outline' as const };
-      case 'AREA_DISABLE':
-        return { bg: '#fce4ec', text: '#c62828', icon: 'location-outline' as const };
-      case 'AREA_ENABLE':
-        return { bg: '#ecfdf5', text: '#047857', icon: 'location-outline' as const };
       default:
-        return { bg: '#f5f5f5', text: '#616161', icon: 'help-circle-outline' as const };
+        return { bg: '#e3f2fd', text: '#1565c0', label: 'EDIT', icon: 'create-outline' as const };
     }
   }
 
@@ -197,26 +182,27 @@ export default function HistoryScreen() {
   }
 
   function cleanLot(code: string | null | undefined) {
-    if (!code) return 'N/A';
+    if (!code) return '';
     return code.replace(/-\d+$/, '');
-  }
-
-  // Derive the lot code from either the stored yarn_code column or fallback
-  function getLotCode(item: HistoryItem, parsedAction: string): string {
-    // First try the stored yarn_code column (most reliable, survives deletion)
-    if (item.yarn_code) return cleanLot(item.yarn_code);
-    return 'N/A';
   }
 
   return (
     <View style={styles.container}>
+      {/* Offline Banner */}
+      {!isOnline && (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="cloud-offline" size={14} color="#b45309" />
+          <Text style={styles.offlineText}>Offline: Connection unstable, showing cached data.</Text>
+        </View>
+      )}
+
       {/* Date Filter */}
       <View style={styles.filterCard}>
         <View style={styles.dateInputWrapper}>
           <Text style={styles.dateLabel}>From:</Text>
           <TouchableOpacity style={styles.dateInputTouchable} onPress={() => setShowFromPicker(true)}>
             <Text style={[styles.dateInputText, !fromDate && styles.datePlaceholder]}>
-              {fromDate ? formatDisplayDate(fromDate) : 'Select Date'}
+              {fromDate ? formatDisplayDate(fromDate) : 'Start date'}
             </Text>
           </TouchableOpacity>
           {fromDate ? (
@@ -229,7 +215,7 @@ export default function HistoryScreen() {
           <Text style={styles.dateLabel}>To:</Text>
           <TouchableOpacity style={styles.dateInputTouchable} onPress={() => setShowToPicker(true)}>
             <Text style={[styles.dateInputText, !toDate && styles.datePlaceholder]}>
-              {toDate ? formatDisplayDate(toDate) : 'Select Date'}
+              {toDate ? formatDisplayDate(toDate) : 'End date'}
             </Text>
           </TouchableOpacity>
           {toDate ? (
@@ -248,7 +234,7 @@ export default function HistoryScreen() {
         currentDate={fromDate}
         onClose={() => setShowFromPicker(false)}
         onSelect={(d) => { setFromDate(d); setShowFromPicker(false); }}
-        title="Select From Date"
+        title="Select Start Date"
         maxDate={toDate || undefined}
       />
       <DatePicker
@@ -256,7 +242,7 @@ export default function HistoryScreen() {
         currentDate={toDate}
         onClose={() => setShowToPicker(false)}
         onSelect={(d) => { setToDate(d); setShowToPicker(false); }}
-        title="Select To Date"
+        title="Select End Date"
         minDate={fromDate || undefined}
       />
 
@@ -273,62 +259,124 @@ export default function HistoryScreen() {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="receipt-outline" size={48} color="#cbd5e1" />
-              <Text style={styles.emptyText}>No operations logged yet.</Text>
+              <Text style={styles.emptyText}>No activities logged yet.</Text>
             </View>
           }
           renderItem={({ item }) => {
-            const { action, operator, details } = parseLogDetails(item);
+            const { 
+              action, operator, color, des, lotCode, 
+              oldLot, newLot, oldColor, newColor, oldDes, newDes 
+            } = parseLogDetails(item);
             const badge = getActionBadge(action);
-            const lotCode = getLotCode(item, action);
             const fromLoc = item.from_area_code || '—';
             const toLoc = item.to_area_code || '—';
 
             return (
               <View style={styles.card}>
-                {/* Header Row */}
+                {/* Card Header */}
                 <View style={styles.cardHeader}>
                   <View style={[styles.badge, { backgroundColor: badge.bg }]}>
                     <Ionicons name={badge.icon} size={14} color={badge.text} style={{ marginRight: 4 }} />
-                    <Text style={[styles.badgeText, { color: badge.text }]}>{action}</Text>
+                    <Text style={[styles.badgeText, { color: badge.text }]}>{badge.label}</Text>
                   </View>
                   <Text style={styles.timeText}>{formatTime(item.moved_at)}</Text>
                 </View>
 
-                {/* Body Details */}
-                <View style={styles.cardBody}>
-                  {/* Lot Code */}
-                  <View style={styles.detailRow}>
-                    <Text style={styles.label}>LOT Code:</Text>
-                    <Text style={styles.lotCode}>{lotCode}</Text>
-                  </View>
-
-                  {/* Movement / Location */}
-                  {action === 'MOVE' ? (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.label}>Movement:</Text>
-                      <View style={styles.movementRow}>
-                        <Text style={styles.locationTag}>{fromLoc}</Text>
-                        <Ionicons name="arrow-forward" size={12} color="#94a3b8" style={{ marginHorizontal: 4 }} />
-                        <Text style={styles.locationTag}>{toLoc}</Text>
-                      </View>
+                {/* Yarn Details Block */}
+                {action === 'EDIT' ? (
+                  /* EDIT: ô bo trước → sau */
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+                    {/* Ô TRƯỚC */}
+                    <View style={{ flex: 1, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, padding: 8 }}>
+                      <Text style={styles.miniLabel}>LOT CODE</Text>  
+                      <Text style={[styles.lotValueText, { color: '#94a3b8', fontWeight: '600', fontSize: 16 }]}>{oldLot || lotCode || '—'}</Text>
+                      {oldColor ? (
+                        <View style={[styles.colorTag, { marginTop: 4 }]}>
+                          <Ionicons name="color-palette-outline" size={10} color="#94a3b8" />
+                          <Text style={[styles.colorTagText, { color: '#94a3b8' }]}>{oldColor}</Text>
+                        </View>
+                      ) : null}
+                      {oldDes ? (
+                        <View style={[styles.desTag, { marginTop: 2 }]}>
+                          <Ionicons name="document-text-outline" size={10} color="#94a3b8" />
+                          <Text style={[styles.desTagText, { color: '#94a3b8' }]} numberOfLines={1}>{oldDes}</Text>
+                        </View>
+                      ) : null}
                     </View>
-                  ) : action === 'CREATE' ? (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.label}>Placed In:</Text>
+
+                    {/* Mũi tên */}
+                    <Ionicons name="arrow-forward-outline" size={16} color="#94a3b8" />
+
+                    {/* Ô SAU */}
+                    <View style={{ flex: 1, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 8, padding: 8 }}>
+                      <Text style={styles.miniLabel}>LOT CODE</Text>
+                      <Text style={styles.lotValueText}>{newLot || lotCode || '—'}</Text>
+                      {newColor ? (
+                        <View style={[styles.colorTag, { marginTop: 4 }]}>
+                          <Ionicons name="color-palette-outline" size={10} color="#475569" />
+                          <Text style={styles.colorTagText}>{newColor}</Text>
+                        </View>
+                      ) : null}
+                      {newDes ? (
+                        <View style={[styles.desTag, { marginTop: 2 }]}>
+                          <Ionicons name="document-text-outline" size={10} color="#475569" />
+                          <Text style={styles.desTagText} numberOfLines={1}>{newDes}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                ) : (
+                  /* CREATE & DELETE: compact ngang */
+                  <View style={styles.compactDetailsBlock}>
+                    <View style={styles.compactLotSection}>
+                      <Text style={styles.miniLabel}>LOT CODE</Text>
+                      <Text style={styles.lotValueText}>{lotCode || 'N/A'}</Text>
+                    </View>
+
+                    {(color || des) ? <View style={styles.verticalSeparator} /> : null}
+
+                    {(color || des) ? (
+                      <View style={styles.compactMetaSection}>
+                        {color ? (
+                          <View style={styles.colorTag}>
+                            <Ionicons name="color-palette-outline" size={11} color="#475569" />
+                            <Text style={styles.colorTagText}>{color}</Text>
+                          </View>
+                        ) : null}
+                        {des ? (
+                          <View style={styles.desTag}>
+                            <Ionicons name="document-text-outline" size={11} color="#475569" />
+                            <Text style={styles.desTagText} numberOfLines={1}>{des}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </View>
+                )}
+
+                {/* Card Body */}
+                <View style={styles.cardBody}>
+                  {/* CREATE / ADD (Green Theme) */}
+                  {action === 'CREATE' && (
+                    <View style={styles.locationWrapper}>
+                      <Text style={styles.locationLabel}>Placed in:</Text>
                       <Text style={styles.locationTag}>{toLoc}</Text>
                     </View>
-                  ) : action === 'DELETE' ? (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.label}>Removed From:</Text>
-                      <Text style={styles.locationTag}>{fromLoc}</Text>
-                    </View>
-                  ) : null}
+                  )}
 
-                  {/* Details */}
-                  {details.trim().length > 0 && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.label}>Details:</Text>
-                      <Text style={styles.detailsText}>{details}</Text>
+                  {/* DELETE (Red Theme) */}
+                  {action === 'DELETE' && (
+                    <View style={styles.locationWrapper}>
+                      <Text style={styles.locationLabel}>Removed from:</Text>
+                      <Text style={styles.locationTagDelete}>{fromLoc}</Text>
+                    </View>
+                  )}
+
+                  {/* EDIT (Blue Theme) */}
+                  {action === 'EDIT' && (
+                    <View style={styles.locationWrapper}>
+                      <Text style={styles.locationLabel}>Location:</Text>
+                      <Text style={styles.locationTagEdit}>{toLoc || fromLoc || '—'}</Text>
                     </View>
                   )}
 
@@ -349,8 +397,22 @@ export default function HistoryScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
+  offlineBanner: {
+    backgroundColor: '#fef3c7',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    gap: 6,
+  },
+  offlineText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#b45309',
+  },
 
-  // Date Filter
+  // Filters
   filterCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -383,11 +445,13 @@ const styles = StyleSheet.create({
   },
 
   list: { padding: 12, paddingBottom: 32 },
+  
+  // Card
   card: {
     backgroundColor: '#ffffff',
     borderRadius: 12,
     padding: 14,
-    marginBottom: 10,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     shadowColor: '#1b4d3e',
@@ -401,52 +465,218 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-    paddingBottom: 8,
   },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
     borderRadius: 6,
   },
-  badgeText: { fontSize: 11, fontWeight: '700' },
+  badgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
   timeText: { fontSize: 11, color: '#94a3b8', fontWeight: '500' },
-  cardBody: { gap: 6 },
-  detailRow: {
+  
+  // 1. CREATE & DELETE Layout (Compact Horizontal)
+  compactDetailsBlock: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 4,
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
   },
-  movementRow: {
+  compactLotSection: {
+    flex: 1.1,
+    justifyContent: 'center',
+  },
+  verticalSeparator: {
+    width: 1,
+    height: '70%',
+    backgroundColor: '#e2e8f0',
+    marginHorizontal: 12,
+  },
+  compactMetaSection: {
+    flex: 1.5,
+    gap: 6,
+    justifyContent: 'center',
+  },
+
+  // 2. EDIT Layout (Split Side-by-Side Old ➔ New)
+  editDetailsBlock: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#bfdbfe', // Blue border for EDIT
   },
-  label: { fontSize: 12, color: '#64748b', width: 90, fontWeight: '500' },
-  lotCode: { fontSize: 13, fontWeight: '800', color: '#0f172a' },
-  valueText: { fontSize: 13, color: '#334155', fontWeight: '600' },
-  locationTag: {
+  editColumn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  arrowColumn: {
+    width: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editColumnLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#94a3b8',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  editLotBox: {
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
     backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  editLotValueOld: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  editLotValueNew: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  editMetaColumn: {
+    gap: 4,
+    width: '100%',
+    alignItems: 'center',
+  },
+
+  // Shared inner Tags (Color & Description)
+  miniLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#94a3b8',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  lotValueText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  metaContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  colorTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    borderWidth: 0.5,
+    borderColor: '#cbd5e1',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
-    fontSize: 12,
+    gap: 3,
+    maxWidth: '100%',
+  },
+  colorTagText: {
+    fontSize: 10,
     fontWeight: '700',
     color: '#334155',
+  },
+  desTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
     borderWidth: 0.5,
-    borderColor: '#cbd5e1',
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    gap: 3,
+    maxWidth: '100%',
+    flexShrink: 1,
+  },
+  desTagText: {
+    flexShrink: 1,
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#475569',
+  },
+
+  // Card Body
+  cardBody: { gap: 10 },
+
+  // Location Placements
+  locationWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  locationLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  // ADD / CREATE (Green)
+  locationTag: {
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#065f46',
+    borderWidth: 0.5,
+    borderColor: '#a7f3d0',
     overflow: 'hidden',
   },
-  detailsText: { fontSize: 12, color: '#475569', fontStyle: 'italic', flex: 1 },
+  // DELETE (Red)
+  locationTagDelete: {
+    backgroundColor: '#fef2f2',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#991b1b',
+    borderWidth: 0.5,
+    borderColor: '#fecaca',
+    overflow: 'hidden',
+  },
+  // EDIT (Blue)
+  locationTagEdit: {
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1d4ed8',
+    borderWidth: 0.5,
+    borderColor: '#bfdbfe',
+    overflow: 'hidden',
+  },
+
+  // Operator footer
   operatorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
-    paddingTop: 6,
+    marginTop: 4,
+    paddingTop: 8,
     borderTopWidth: 0.5,
     borderTopColor: '#f1f5f9',
   },

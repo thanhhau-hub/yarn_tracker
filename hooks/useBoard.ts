@@ -3,6 +3,7 @@ import { AppState, Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { AreaWithCount } from '../types';
 import { Session } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
  * Fetches all active areas with a live count of yarn rolls (LOTs) inside each one.
@@ -42,6 +43,19 @@ export function useBoard(session: Session | null | undefined) {
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 8s timeout
 
     console.log('[useBoard] Fetching board data... session user:', currentSession?.user?.email ?? 'guest');
+
+    // Stale-While-Revalidate: Load cache first if we don't have data yet
+    if (areas.length === 0) {
+      try {
+        const cached = await AsyncStorage.getItem('cached_board');
+        if (cached) {
+          setAreas(JSON.parse(cached));
+          setLoading(false);
+        }
+      } catch (e) {
+        console.warn('Failed to read board cache', e);
+      }
+    }
 
     try {
       const { data, error } = await supabase
@@ -88,6 +102,10 @@ export function useBoard(session: Session | null | undefined) {
         };
       });
       setAreas(formatted);
+      
+      // Update cache
+      AsyncStorage.setItem('cached_board', JSON.stringify(formatted)).catch(err => console.warn('Failed to write board cache', err));
+      
       setError(null);
     } catch (err: any) {
       clearTimeout(timeoutId);

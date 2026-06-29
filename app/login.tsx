@@ -30,20 +30,37 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  
+  // State lưu trữ thông báo lỗi để hiển thị trực tiếp trên giao diện
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const isValidEmail = (emailStr: string) => {
     const reg = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
     return reg.test(emailStr.trim());
   };
 
+  // Hàm cập nhật Email và xóa thông báo lỗi cũ
+  const handleEmailChange = (text: string) => {
+    setEmail(text);
+    if (errorMessage) setErrorMessage(null);
+  };
+
+  // Hàm cập nhật Mật khẩu và xóa thông báo lỗi cũ
+  const handlePasswordChange = (text: string) => {
+    setPassword(text);
+    if (errorMessage) setErrorMessage(null);
+  };
+
   async function handleAuth() {
+    setErrorMessage(null);
+
     if (!email.trim() || !password) {
-      Alert.alert('Missing Fields', 'Please enter both your email address and password to continue.');
+      setErrorMessage('Please enter email & password.');
       return;
     }
 
     if (!isValidEmail(email)) {
-      Alert.alert('Invalid Email', 'Please enter a valid work email address.');
+      setErrorMessage('Please enter a valid work email address.');
       return;
     }
 
@@ -56,27 +73,31 @@ export default function LoginScreen() {
       });
 
       if (error) {
-        Alert.alert(
-          'Sign In Failed',
-          error.message === 'Invalid login credentials' 
-            ? 'The email or password you entered is incorrect.' 
-            : error.message
-        );
+        // Phân loại và Việt hóa một số lỗi phổ biến từ Supabase
+        if (error.message === 'Invalid login credentials') {
+          setErrorMessage('The email or password you entered is incorrect.');
+        } else if (error.message.toLowerCase().includes('network') || error.status === 0) {
+          setErrorMessage('Network connection error. Please check your internet connection.');
+        } else {
+          setErrorMessage(error.message);
+        }
       }
     } catch (err: any) {
-      Alert.alert('System Error', 'An unexpected network error occurred. Please try again.');
+      // Báo lỗi hệ thống bất ngờ
+      setErrorMessage(err?.message || 'An unexpected system error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
   }
 
   async function handleGuestAuth() {
+    setErrorMessage(null);
     setLoading(true);
     try {
       await setGuestMode(true);
       router.replace('/(tabs)');
-    } catch (err) {
-      Alert.alert('Error', 'Failed to enter guest mode.');
+    } catch (err: any) {
+      setErrorMessage('Failed to enter worker mode. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -113,6 +134,14 @@ export default function LoginScreen() {
               Please select your access method below.
             </Text>
 
+            {/* Hiển thị lỗi trực quan ngay trong thẻ nếu có */}
+            {errorMessage && (
+              <View style={styles.errorBanner}>
+                <Ionicons name="alert-circle" size={18} color="#dc2626" style={styles.errorIcon} />
+                <Text style={styles.errorText}>{errorMessage}</Text>
+              </View>
+            )}
+
             {/* Guest Login */}
             <TouchableOpacity
               style={[styles.button, styles.guestButton, loading && styles.buttonDisabled]}
@@ -138,7 +167,7 @@ export default function LoginScreen() {
                   placeholder="Email"
                   placeholderTextColor="#94a3b8"
                   value={email}
-                  onChangeText={setEmail}
+                  onChangeText={handleEmailChange}
                   autoCapitalize="none"
                   keyboardType="email-address"
                   autoCorrect={false}
@@ -150,12 +179,13 @@ export default function LoginScreen() {
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>Password</Text>
               <View style={styles.inputContainer}>
+                <Ionicons name="key-outline" size={20} color="#64748b" style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder="Enter password"
                   placeholderTextColor="#94a3b8"
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={handlePasswordChange}
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -269,6 +299,27 @@ const styles = StyleSheet.create({
     marginBottom: 28,
     lineHeight: 18,
   },
+  // Style cho thông báo lỗi
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    borderColor: '#fee2e2',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 20,
+  },
+  errorIcon: {
+    marginRight: 8,
+  },
+  errorText: {
+    flex: 1,
+    color: '#b91c1c',
+    fontSize: 13,
+    fontWeight: '500',
+  },
   inputWrapper: {
     marginBottom: 20,
   },
@@ -371,19 +422,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 32,
     letterSpacing: 0.5,
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 24,
-  },
-  toggleText: {
-    color: '#64748b',
-    fontSize: 13,
-  },
-  toggleTextLink: {
-    color: '#047857',
-    fontSize: 13,
-    fontWeight: '700',
   },
 });

@@ -72,8 +72,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Initial session load
     supabase.auth.getSession()
-      .then(async ({ data: { session } }) => {
+      .then(async ({ data: { session }, error }) => {
         if (!active) return;
+        
+        if (error) {
+          console.warn('Session error:', error.message);
+          if (error.message.includes('Refresh Token') || error.message.includes('refresh token')) {
+            await supabase.auth.signOut().catch(() => {});
+          }
+        }
+
         setSession(session);
         if (session?.user) {
           const metaRole = (session.user.user_metadata?.role || 'worker') as UserRole;

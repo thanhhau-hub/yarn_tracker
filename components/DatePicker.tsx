@@ -96,30 +96,34 @@ export default function DatePicker({
   };
 
   return (
-    <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.modalContent}>
-          <View style={styles.header}>
-            <Text style={styles.title}>{title}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={24} color="#64748b" />
-            </TouchableOpacity>
-          </View>
+    <>
+      {visible && (
+        <Modal visible={true} transparent={true} animationType="fade" onRequestClose={onClose}>
+          <View style={styles.overlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.header}>
+                <Text style={styles.title}>{title}</Text>
+                <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+                  <Ionicons name="close" size={24} color="#64748b" />
+                </TouchableOpacity>
+              </View>
 
-          <View style={styles.controls}>
-            <TouchableOpacity onPress={handlePrevMonth} style={styles.ctrlBtn}>
-              <Ionicons name="chevron-back" size={20} color="#1e293b" />
-            </TouchableOpacity>
-            <Text style={styles.monthText}>{months[viewMonth]} {viewYear}</Text>
-            <TouchableOpacity onPress={handleNextMonth} style={styles.ctrlBtn}>
-              <Ionicons name="chevron-forward" size={20} color="#1e293b" />
-            </TouchableOpacity>
-          </View>
+              <View style={styles.controls}>
+                <TouchableOpacity onPress={handlePrevMonth} style={styles.ctrlBtn}>
+                  <Ionicons name="chevron-back" size={20} color="#1e293b" />
+                </TouchableOpacity>
+                <Text style={styles.monthText}>{months[viewMonth]} {viewYear}</Text>
+                <TouchableOpacity onPress={handleNextMonth} style={styles.ctrlBtn}>
+                  <Ionicons name="chevron-forward" size={20} color="#1e293b" />
+                </TouchableOpacity>
+              </View>
 
-          {renderCalendar()}
-        </View>
-      </View>
-    </Modal>
+              {renderCalendar()}
+            </View>
+          </View>
+        </Modal>
+      )}
+    </>
   );
 }
 

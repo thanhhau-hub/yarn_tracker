@@ -69,7 +69,6 @@ function RootLayoutContent() {
         <Stack.Screen name="register" options={{ headerShown: false }} />
         <Stack.Screen name="area/[id]" options={{ title: 'Area Detail' }} />
         <Stack.Screen name="yarn/[id]" options={{ title: 'LOT History', headerStyle: { backgroundColor: '#1b4d3e' }, headerTintColor: '#fff', headerTitleStyle: { fontWeight: '700' } }} />
-        <Stack.Screen name="move/[id]" options={{ title: 'Move LOT', headerStyle: { backgroundColor: '#1b4d3e' }, headerTintColor: '#fff', headerTitleStyle: { fontWeight: '700' } }} />
       </Stack>
       {loading && (
         <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc', zIndex: 999 }}>
