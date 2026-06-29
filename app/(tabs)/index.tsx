@@ -767,7 +767,7 @@ function BoardScreen() {
         )}
 
         {/* Header - Nút Logout bên ngoài đối với Worker và Menu ☰ đối với Admin/Supervisor */}
-        <View style={[styles.header, { paddingTop: insets.top + 2 }]}>
+        <View style={[styles.header, { paddingTop: insets.top }]}>
           <View style={styles.headerLeft}>
             <Text style={styles.headerTitle}>Rack Board</Text>
             <View style={styles.roleRow}>
@@ -1454,7 +1454,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 10,
+    paddingBottom: 6,
     backgroundColor: '#1b4d3e',
   },
   headerLeft: { flex: 1, minWidth: 0 },

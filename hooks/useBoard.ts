@@ -27,6 +27,8 @@ export function useBoard(session: Session | null | undefined) {
   }, [session]);
 
   const userId = session?.user?.id;
+  // sessionStatus: track trạng thái auth rõ ràng hơn userId (undefined→null không trigger lại)
+  const sessionStatus = session === undefined ? 'loading' : session === null ? 'guest' : `user:${userId}`;
 
   const fetchBoard = useCallback(async (retryCount = 0, force = false) => {
     const currentSession = sessionRef.current;
@@ -146,7 +148,20 @@ export function useBoard(session: Session | null | undefined) {
     // session === null means "guest mode" or "not logged in" → still fetch (anon key)
     // session is a Session object → fetch!
     const currentSession = sessionRef.current;
-    if (currentSession === undefined) return;
+
+    // Safety timeout: if session stays undefined for >10s (auth hung), stop loading
+    let safetyTimer: ReturnType<typeof setTimeout> | null = null;
+    if (currentSession === undefined) {
+      safetyTimer = setTimeout(() => {
+        if (sessionRef.current === undefined) {
+          console.warn('[useBoard] Auth loading timeout — forcing loading=false');
+          setLoading(false);
+        }
+      }, 10000);
+      return () => {
+        if (safetyTimer) clearTimeout(safetyTimer);
+      };
+    }
 
     if (areas.length === 0) {
       setLoading(true);
@@ -207,6 +222,7 @@ export function useBoard(session: Session | null | undefined) {
     return () => {
       inFlightRef.current?.abort();
       if (debounceTimer) clearTimeout(debounceTimer);
+      if (safetyTimer) clearTimeout(safetyTimer);
       supabase.removeChannel(subscription);
       if (Platform.OS === 'web' && typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -215,7 +231,7 @@ export function useBoard(session: Session | null | undefined) {
         subscriptionAppState.remove();
       }
     };
-  }, [userId, fetchBoard]);
+  }, [sessionStatus, fetchBoard]);
 
   const refetch = useCallback(() => fetchBoard(0, true), [fetchBoard]);
   return { areas, loading, error, refetch };
