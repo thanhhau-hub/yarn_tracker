@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { AreaWithCount } from '../types';
 import { Session } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNetwork } from './useNetwork';
 
 /**
  * Fetches all active areas with a live count of yarn rolls (LOTs) inside each one.
@@ -128,6 +129,17 @@ export function useBoard(session: Session | null | undefined) {
       setLoading(false);
     }
   }, [userId]);
+
+  // Auto-refetch when network reconnects (offline → online)
+  const { isOnline } = useNetwork();
+  const prevIsOnlineRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (prevIsOnlineRef.current === false && isOnline === true) {
+      console.log('[useBoard] Network reconnected — refetching...');
+      fetchBoard(0, true);
+    }
+    prevIsOnlineRef.current = isOnline;
+  }, [isOnline, fetchBoard]);
 
   useEffect(() => {
     // session === undefined means "not yet known" (AuthContext still loading) → wait

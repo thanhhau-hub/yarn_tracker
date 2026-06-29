@@ -183,11 +183,11 @@ function BoardScreen() {
   const isLargeScreen = screenWidth >= 768;
   const numColumns = isLargeScreen ? 6 : 4;
 
-  const horizontalPadding = 32;                          // paddingLeft 8 + paddingRight 8
+  const horizontalPadding = isLargeScreen ? 32 : 16;     // mobile ít padding hơn để cell rộng hơn
   const gap = 4;
 
   // appMaxWidth: giới hạn tối đa trên laptop (tránh cell quá rộng)
-  const MAX_CELL_SIZE = isLargeScreen ? 76 : 82;
+  const MAX_CELL_SIZE = isLargeScreen ? 76 : 96;
   const appMaxWidth = numColumns * MAX_CELL_SIZE + (numColumns - 1) * gap + horizontalPadding;
 
   // containerWidth: lấy toàn bộ màn hình, nhưng không vượt quá appMaxWidth
@@ -767,7 +767,7 @@ function BoardScreen() {
         )}
 
         {/* Header - Nút Logout bên ngoài đối với Worker và Menu ☰ đối với Admin/Supervisor */}
-        <View style={[styles.header, { paddingTop: insets.top }]}>
+        <View style={[styles.header, { paddingTop: insets.top + 2 }]}>
           <View style={styles.headerLeft}>
             <Text style={styles.headerTitle}>Rack Board</Text>
             <View style={styles.roleRow}>
@@ -1454,7 +1454,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingBottom: 10,
     backgroundColor: '#1b4d3e',
   },
   headerLeft: { flex: 1, minWidth: 0 },
