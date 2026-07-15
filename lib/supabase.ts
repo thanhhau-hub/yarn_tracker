@@ -1,4 +1,4 @@
-import { createClient, processLock } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
@@ -24,7 +24,8 @@ if (!globalForSupabase.supabase) {
     isSupabaseConfigured ? SUPABASE_ANON_KEY : 'missing-config',
     {
       auth: {
-        ...(Platform.OS !== 'web' ? { storage: AsyncStorage, lock: processLock } : {}),
+        ...(Platform.OS !== 'web' ? { storage: AsyncStorage } : {}),
+        storageKey: 'yarn-tracker-auth-v2', // Bypass any corrupted navigator.locks
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,

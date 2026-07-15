@@ -19,6 +19,7 @@ export type YarnRoll = {
 
   color?: string | null;
   description?: string | null;
+  is_checked?: boolean | null;
   is_deleted?: boolean;
   updated_at: string;
 

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { AppState, Platform } from 'react-native';
+import { AppState, Platform, Alert } from 'react-native';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import { Session, User } from '@supabase/supabase-js';
+import { Session, User, AuthChangeEvent } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type UserRole = 'worker' | 'supervisor' | 'admin';
@@ -39,25 +39,58 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       : 'Supabase configuration is missing. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY before building the APK.'
   );
 
-  // Helper to fetch user role from Profiles table with fallback to user metadata
-  async function fetchUserRole(userId: string, userMetadataRole?: string) {
+  async function fetchUserRole(userId: string, retryCount = 0) {
     try {
-      const { data, error } = await supabase
+      // Wrap the query in a Promise.race to prevent infinite hanging during Supabase cold start
+      const queryPromise = supabase
         .from('profiles')
         .select('role')
         .eq('id', userId)
         .single();
+        
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('ROLE_FETCH_TIMEOUT')), 5000)
+      );
 
-      if (!error && data) {
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
+
+      if (error) throw error;
+      if (data) {
         setRole(data.role as UserRole);
-      } else {
-        // Fallback to user metadata role or default worker
-        setRole((userMetadataRole || 'worker') as UserRole);
       }
-    } catch (err) {
-      console.error('Error fetching role in context:', err);
-      setRole((userMetadataRole || 'worker') as UserRole);
+    } catch (err: any) {
+      console.warn(`[fetchUserRole] Error (Retry ${retryCount}/5):`, err.message || err);
+      if (retryCount < 5) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        await fetchUserRole(userId, retryCount + 1);
+      } else {
+        console.error('[fetchUserRole] Max retries reached. Database is unavailable or access denied.');
+        // If we absolutely cannot fetch the role, we should not fallback to a fake role.
+        // Alert the user and log them out to prevent inconsistent state.
+        if (Platform.OS !== 'web') {
+          Alert.alert('Database Error', 'Could not fetch user profile. The database might be offline.');
+        } else {
+          window.alert('Could not fetch user profile. The database might be offline.');
+        }
+        await supabase.auth.signOut().catch(() => {});
+      }
     }
+  }
+
+  /**
+   * Wrap supabase.auth.getSession() in a race against a timeout.
+   * Supabase Free tier pauses after inactivity — the first request can take
+   * 20-30s to wake the project up. Without a timeout the app hangs on a blank
+   * spinner indefinitely. With this wrapper we unblock the UI after 6s and
+   * let the background retry resolve the session once Supabase is awake.
+   */
+  function getSessionWithTimeout(ms: number) {
+    return Promise.race([
+      supabase.auth.getSession(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('AUTH_TIMEOUT')), ms)
+      ),
+    ]);
   }
 
   useEffect(() => {
@@ -70,11 +103,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
-    // Initial session load
-    supabase.auth.getSession()
-      .then(async ({ data: { session }, error }) => {
+    // Initial session load — race against a 6s timeout so Supabase cold-start
+    // (Free tier pause) never blocks the UI indefinitely.
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const attemptGetSession = async (attempt = 0) => {
+      try {
+        const { data: { session }, error } = await getSessionWithTimeout(6000) as any;
         if (!active) return;
-        
+
         if (error) {
           console.warn('Session error:', error.message);
           if (error.message.includes('Refresh Token') || error.message.includes('refresh token')) {
@@ -82,12 +119,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
 
-        setSession(session);
         if (session?.user) {
-          const metaRole = (session.user.user_metadata?.role || 'worker') as UserRole;
-          await fetchUserRole(session.user.id, metaRole);
+          await fetchUserRole(session.user.id);
         } else {
-          // Check for guest mode
           try {
             const guestMode = await AsyncStorage.getItem('guest_mode');
             if (guestMode === 'true') {
@@ -100,30 +134,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setRole(null);
           }
         }
-      })
-      .catch((err) => {
-        console.error('Error in initial session load:', err);
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false);
+        if (active) setLoading(false);
+
+      } catch (err: any) {
+        if (!active) return;
+
+        if (err.message === 'AUTH_TIMEOUT') {
+          // Supabase is waking up (cold start). Unblock the UI immediately so
+          // the user isn't stuck on a blank screen, then retry in background.
+          console.warn('[Auth] getSession timed out — Supabase cold start? Unblocking UI and retrying...');
+          setSession(null);
+          setRole(null);
+          setLoading(false); // ← unblock the UI → redirect to /login
+
+          // Retry with exponential backoff: 5s, 10s, 20s, 40s …
+          const delay = Math.min(5000 * Math.pow(2, attempt), 40000);
+          retryTimer = setTimeout(() => attemptGetSession(attempt + 1), delay);
+        } else {
+          console.error('Error in initial session load:', err);
+          if (active) setLoading(false);
         }
-      });
+      }
+    };
+
+    attemptGetSession();
 
     // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, currentSession: Session | null) => {
       if (!active) return;
-      setSession(currentSession);
+      
       if (currentSession?.user) {
         setIsGuest(false);
-        const metaRole = (currentSession.user.user_metadata?.role || 'worker') as UserRole;
-        await fetchUserRole(currentSession.user.id, metaRole);
+        // Fetch role from database silently, outside of the auth lock
+        setTimeout(() => {
+          fetchUserRole(currentSession.user.id);
+        }, 0);
+        setSession(currentSession);
       } else {
+        setSession(currentSession);
         if (!isGuest) {
           setRole(null);
         }
       }
-      setLoading(false);
     });
 
     if (Platform.OS !== 'web' && AppState.currentState === 'active') {
@@ -145,6 +197,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       active = false;
+      if (retryTimer) clearTimeout(retryTimer);
       if (Platform.OS !== 'web') {
         supabase.auth.stopAutoRefresh();
       }
@@ -162,7 +215,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${session.user.id}` },
-        (payload) => {
+        (payload: any) => {
           if (payload.new && payload.new.role) {
             setRole(payload.new.role as UserRole);
           }
@@ -190,8 +243,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refetchRole = async () => {
     if (session?.user) {
-      const metaRole = session.user.user_metadata?.role || 'worker';
-      await fetchUserRole(session.user.id, metaRole);
+      await fetchUserRole(session.user.id);
     }
   };
 

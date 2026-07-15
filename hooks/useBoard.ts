@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { AppState, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { AreaWithCount } from '../types';
 import { Session } from '@supabase/supabase-js';
@@ -14,12 +14,19 @@ import { useNetwork } from './useNetwork';
  * IMPORTANT: Pass the current session so this hook waits until auth is ready
  * before fetching. This prevents the "no data on first load" bug.
  */
+// In-memory cache to prevent spinner flash on tab remounts
+let globalAreasCache: AreaWithCount[] = [];
+
 export function useBoard(session: Session | null | undefined) {
-  const [areas, setAreas] = useState<AreaWithCount[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [areas, setAreas] = useState<AreaWithCount[]>(globalAreasCache);
+  const [loading, setLoading] = useState(globalAreasCache.length === 0);
   const [error, setError] = useState<string | null>(null);
+
+  // Track the currently running AbortController
   const inFlightRef = useRef<AbortController | null>(null);
-  const lastFetchStartedAtRef = useRef(0);
+
+  // Debounce timer: coalesces rapid-fire calls (e.g. useFocusEffect + useEffect firing together)
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sessionRef = useRef(session);
   useEffect(() => {
@@ -30,20 +37,25 @@ export function useBoard(session: Session | null | undefined) {
   // sessionStatus: track trạng thái auth rõ ràng hơn userId (undefined→null không trigger lại)
   const sessionStatus = session === undefined ? 'loading' : session === null ? 'guest' : `user:${userId}`;
 
-  const fetchBoard = useCallback(async (retryCount = 0, force = false) => {
+  /**
+   * Core fetch function.
+   * - Always aborts the previous in-flight request before starting a new one.
+   * - Callers should go through `scheduleFetch` to benefit from debouncing.
+   */
+  const fetchBoard = useCallback(async (retryCount = 0) => {
     const currentSession = sessionRef.current;
     // session === undefined means auth is still loading — wait
-    // session === null means guest mode (no login) — allow fetch (anon key provides read access)
     if (currentSession === undefined) return;
 
-    const now = Date.now();
-    if (!force && inFlightRef.current) return;
-    if (!force && now - lastFetchStartedAtRef.current < 1000) return;
+    // Abort any previous in-flight request first
+    if (inFlightRef.current) {
+      inFlightRef.current.abort();
+      inFlightRef.current = null;
+    }
 
     const controller = new AbortController();
     inFlightRef.current = controller;
-    lastFetchStartedAtRef.current = now;
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 8s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     console.log('[useBoard] Fetching board data... session user:', currentSession?.user?.email ?? 'guest');
 
@@ -71,6 +83,7 @@ export function useBoard(session: Session | null | undefined) {
             area_id,
             color,
             description,
+            is_checked,
             is_deleted,
             updated_at
           )
@@ -85,13 +98,14 @@ export function useBoard(session: Session | null | undefined) {
         // Supabase wraps AbortError into a response error — silently ignore it
         const msg = error.message || '';
         if (msg.includes('AbortError') || msg.includes('aborted')) {
-          if (inFlightRef.current === controller) {
-            inFlightRef.current = null;
-          }
+          if (inFlightRef.current === controller) inFlightRef.current = null;
           return;
         }
         throw error;
       }
+
+      // If this controller was already aborted/replaced, discard stale results
+      if (inFlightRef.current !== controller) return;
 
       console.log('[useBoard] Got', data?.length, 'areas');
       const formatted: AreaWithCount[] = (data || []).map((area: any) => {
@@ -104,26 +118,33 @@ export function useBoard(session: Session | null | undefined) {
           yarn_count: activeYarns.length,
         };
       });
+      globalAreasCache = formatted;
       setAreas(formatted);
-      
+
       // Update cache
-      AsyncStorage.setItem('cached_board', JSON.stringify(formatted)).catch(err => console.warn('Failed to write board cache', err));
-      
+      AsyncStorage.setItem('cached_board', JSON.stringify(formatted)).catch(err =>
+        console.warn('Failed to write board cache', err)
+      );
+
       setError(null);
     } catch (err: any) {
       clearTimeout(timeoutId);
 
-      // AbortError = request cancelled by cleanup (component unmount) or timeout.
-      // This is expected — silently clean up and ignore it.
-      if (err.name === 'AbortError' || err.message?.includes('AbortError') || err.message?.includes('aborted')) {
-        if (inFlightRef.current === controller) {
-          inFlightRef.current = null;
-        }
+      // AbortError = request cancelled intentionally — silently ignore
+      if (
+        err.name === 'AbortError' ||
+        err.message?.includes('AbortError') ||
+        err.message?.includes('aborted')
+      ) {
+        if (inFlightRef.current === controller) inFlightRef.current = null;
         return;
       }
 
       console.error('Board fetch error:', err);
-      setError('The network connection is unstable');
+      // Hiển thị lỗi thực tế để debug
+      // @ts-ignore
+      if (typeof window !== 'undefined' && window.alert) window.alert('Debug useBoard Error: ' + (err.message || JSON.stringify(err)));
+      setError(err.message || 'Lỗi kết nối mạng');
     } finally {
       if (inFlightRef.current === controller) {
         inFlightRef.current = null;
@@ -132,21 +153,32 @@ export function useBoard(session: Session | null | undefined) {
     }
   }, [userId]);
 
+  /**
+   * Debounced scheduler: any number of calls within 150ms collapses into ONE fetch.
+   * This prevents triple-fetching from useFocusEffect + useEffect firing simultaneously.
+   */
+  const scheduleFetch = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      debounceTimerRef.current = null;
+      fetchBoard(0);
+    }, 150);
+  }, [fetchBoard]);
+
   // Auto-refetch when network reconnects (offline → online)
   const { isOnline } = useNetwork();
   const prevIsOnlineRef = useRef<boolean | null>(null);
   useEffect(() => {
     if (prevIsOnlineRef.current === false && isOnline === true) {
       console.log('[useBoard] Network reconnected — refetching...');
-      fetchBoard(0, true);
+      scheduleFetch();
     }
     prevIsOnlineRef.current = isOnline;
-  }, [isOnline, fetchBoard]);
+  }, [isOnline, scheduleFetch]);
 
   useEffect(() => {
-    // session === undefined means "not yet known" (AuthContext still loading) → wait
-    // session === null means "guest mode" or "not logged in" → still fetch (anon key)
-    // session is a Session object → fetch!
     const currentSession = sessionRef.current;
 
     // Safety timeout: if session stays undefined for >10s (auth hung), stop loading
@@ -166,21 +198,22 @@ export function useBoard(session: Session | null | undefined) {
     if (areas.length === 0) {
       setLoading(true);
     }
-    fetchBoard(0, false);
+    scheduleFetch();
 
-    // Coalesce / Debounce multiple rapid realtime notifications (e.g. bulk operations)
-    let debounceTimer: any = null;
+    // Realtime debounce timer (separate from scheduleFetch's debounce)
+    let realtimeDebounce: ReturnType<typeof setTimeout> | null = null;
     const debouncedFetchBoard = () => {
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-      }
-      debounceTimer = setTimeout(() => {
-        // Only fetch if tab is visible on Web, or if it is standard React Native environment
-        if (Platform.OS === 'web' && typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      if (realtimeDebounce) clearTimeout(realtimeDebounce);
+      realtimeDebounce = setTimeout(() => {
+        if (
+          Platform.OS === 'web' &&
+          typeof document !== 'undefined' &&
+          document.visibilityState === 'hidden'
+        ) {
           return;
         }
-        fetchBoard(0, false);
-      }, 3000); // 3-second debounce cooldown
+        fetchBoard(0);
+      }, 3000); // 3-second debounce for realtime events
     };
 
     const channelId = `board-realtime-${Date.now()}-${Math.random()}`;
@@ -198,41 +231,17 @@ export function useBoard(session: Session | null | undefined) {
       )
       .subscribe();
 
-    // Visibility listener for Web CPU saving
-    const handleVisibilityChange = () => {
-      if (Platform.OS === 'web' && typeof document !== 'undefined' && document.visibilityState === 'visible') {
-        fetchBoard(0, false);
-      }
-    };
-
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', handleVisibilityChange);
-    }
-
-    // AppState listener: refetch when returning from background (Native platforms only to save CPU/battery)
-    let subscriptionAppState: any = null;
-    if (Platform.OS !== 'web') {
-      subscriptionAppState = AppState.addEventListener('change', (nextAppState) => {
-        if (nextAppState === 'active') {
-          fetchBoard(0, false);
-        }
-      });
-    }
-
     return () => {
+      // Abort any in-flight request on cleanup
       inFlightRef.current?.abort();
-      if (debounceTimer) clearTimeout(debounceTimer);
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      if (realtimeDebounce) clearTimeout(realtimeDebounce);
       if (safetyTimer) clearTimeout(safetyTimer);
       supabase.removeChannel(subscription);
-      if (Platform.OS === 'web' && typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
-      }
-      if (subscriptionAppState) {
-        subscriptionAppState.remove();
-      }
     };
-  }, [sessionStatus, fetchBoard]);
+  }, [sessionStatus, scheduleFetch]);
 
-  const refetch = useCallback(() => fetchBoard(0, true), [fetchBoard]);
+  // refetch: exposed to screens — goes through scheduleFetch to prevent duplication
+  const refetch = useCallback(() => scheduleFetch(), [scheduleFetch]);
   return { areas, loading, error, refetch };
 }

@@ -1,17 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { supabase, adminAuthClient } from '../../lib/supabase';
+import { supabase } from '../../lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { useRole } from '../../hooks/useRole';
 import { Ionicons } from '@expo/vector-icons';
 import { Profile } from '../../types';
 
+// Dynamically create adminAuthClient only when needed to prevent global GoTrueClient multiple instance warnings
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+const getAdminAuthClient = () => {
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      storage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+};
+
+// Global cache to prevent spinner on tab switch
+let globalProfilesCache: Profile[] = [];
+
 export default function AdminScreen() {
+
   const { role, loading: roleLoading } = useRole();
   const insets = useSafeAreaInsets();
   
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [profiles, setProfiles] = useState<Profile[]>(globalProfilesCache);
+  const [loading, setLoading] = useState(globalProfilesCache.length === 0);
   
   // New User Form State
   const [newEmail, setNewEmail] = useState('');
@@ -43,6 +62,7 @@ export default function AdminScreen() {
     setModalConfig({ visible: true, type: 'confirm', title, message, onConfirm });
   }
 
+  // Web fallback: useFocusEffect is unreliable on web — also fetch when role is ready
   useEffect(() => {
     if (role === 'admin') {
       fetchProfiles();
@@ -52,7 +72,10 @@ export default function AdminScreen() {
   async function fetchProfiles() {
     setLoading(true);
     const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    if (data) setProfiles(data);
+    if (data) {
+      globalProfilesCache = data;
+      setProfiles(data);
+    }
     setLoading(false);
   }
 
@@ -72,7 +95,7 @@ export default function AdminScreen() {
   async function executeCreateUser() {
     setCreating(true);
     try {
-      const { data, error } = await adminAuthClient.auth.signUp({
+      const { data, error } = await getAdminAuthClient().auth.signUp({
         email: newEmail.trim(),
         password: newPassword,
         options: {

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useFocusEffect } from 'expo-router';
 import {
   View,
   Text,
@@ -7,9 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   TouchableOpacity,
-  AppState,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useHistory, HistoryItem } from '../../hooks/useHistory';
 import { useNetwork } from '../../hooks/useNetwork';
@@ -38,22 +37,20 @@ export default function HistoryScreen() {
     return `${String(d.getDate()).padStart(2, '0')} ${months[d.getMonth()]} ${d.getFullYear()}`;
   };
 
-  const { logs, loading, error, fetchHistory } = useHistory(fromDate, toDate);
+  const { logs, loading, loadingMore, hasMore, error, fetchHistory, fetchMoreHistory } = useHistory(fromDate, toDate);
 
+  // Fetch mỗi khi tab được focus (bao gồm cả lần đầu mount)
   useFocusEffect(
     useCallback(() => {
       fetchHistory();
-    }, [fromDate, toDate, fetchHistory])
+    }, [fetchHistory])
   );
 
+  // Refetch khi đổi date filter
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'active') {
-        fetchHistory(true);
-      }
-    });
-    return () => subscription.remove();
-  }, [fetchHistory]);
+    fetchHistory();
+  }, [fromDate, toDate]);
+
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -268,8 +265,8 @@ export default function HistoryScreen() {
               oldLot, newLot, oldColor, newColor, oldDes, newDes 
             } = parseLogDetails(item);
             const badge = getActionBadge(action);
-            const fromLoc = item.from_area_code || '—';
-            const toLoc = item.to_area_code || '—';
+            const fromLoc = item.from_area_code;
+            const toLoc = item.to_area_code;
 
             return (
               <View style={styles.card}>
@@ -360,7 +357,7 @@ export default function HistoryScreen() {
                   {action === 'CREATE' && (
                     <View style={styles.locationWrapper}>
                       <Text style={styles.locationLabel}>Placed in:</Text>
-                      <Text style={styles.locationTag}>{toLoc}</Text>
+                      <Text style={styles.locationTag}>{toLoc || '—'}</Text>
                     </View>
                   )}
 
@@ -368,7 +365,7 @@ export default function HistoryScreen() {
                   {action === 'DELETE' && (
                     <View style={styles.locationWrapper}>
                       <Text style={styles.locationLabel}>Removed from:</Text>
-                      <Text style={styles.locationTagDelete}>{fromLoc}</Text>
+                      <Text style={styles.locationTagDelete}>{fromLoc || '—'}</Text>
                     </View>
                   )}
 
@@ -389,6 +386,19 @@ export default function HistoryScreen() {
               </View>
             );
           }}
+          onEndReached={() => { if (hasMore && !loadingMore) fetchMoreHistory(); }}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color="#1b4d3e" />
+              </View>
+            ) : !hasMore && logs.length > 0 ? (
+              <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                <Text style={{ fontSize: 12, color: '#94a3b8' }}>— End of history —</Text>
+              </View>
+            ) : null
+          }
         />
       )}
     </View>

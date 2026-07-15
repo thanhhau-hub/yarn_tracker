@@ -3,22 +3,16 @@ import {
   View,
   Text,
   TouchableOpacity,
-  StyleSheet,
   RefreshControl,
   Alert,
   Platform,
-  Modal,
-  Animated,
   TextInput,
   ActivityIndicator,
   SectionList,
-  ScrollView,
-  Switch,
-  TouchableWithoutFeedback,
   useWindowDimensions,
   BackHandler,
 } from 'react-native';
-import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { supabase } from '../../lib/supabase';
@@ -29,135 +23,17 @@ import { useNetwork } from '../../hooks/useNetwork';
 import { AreaWithCount, Area } from '../../types';
 import { Ionicons } from '@expo/vector-icons';
 
-function cleanLotNumber(lot: string) {
-  if (!lot) return '';
-  return lot.replace(/-\d+$/, '');
-}
+import { RackCell } from '../../components/board/RackCell';
+import { LotActionModal } from '../../components/board/LotActionModal';
+import { AddLotModal } from '../../components/board/AddLotModal';
+import { EditLotModal } from '../../components/board/EditLotModal';
+import { DeleteLotModal } from '../../components/board/DeleteLotModal';
+import { AreaMgmtPanel } from '../../components/board/AreaMgmtPanel';
+import { BoardHeader } from '../../components/board/BoardHeader';
+import { MenuModal } from '../../components/board/MenuModal';
+import { SearchBar } from '../../components/board/SearchBar';
+import { styles, cleanLotNumber } from '../../components/board/boardStyles';
 
-// ─── Animated Rack Cell ────────────────────────────────────────
-const RackCell = React.memo(({ area, columnWidth, isMatched, isTargetArea, shouldDim, hasYarn, lots, colors, descs, onPress }: {
-  area: AreaWithCount | null;
-  columnWidth: number;
-  isMatched: boolean;
-  isTargetArea: boolean;
-  shouldDim: boolean;
-  hasYarn: boolean;
-  lots: string[];
-  colors: string[];
-  descs: string[];
-  onPress: () => void;
-}) => {
-  const pulseAnim = useRef(new Animated.Value(0)).current;
-
-  if (!area) {
-    return <View style={{ width: columnWidth, height: columnWidth, backgroundColor: 'transparent' }} />;
-  }
-
-  useEffect(() => {
-    if (isMatched || isTargetArea) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1, duration: 350, useNativeDriver: false }),
-          Animated.timing(pulseAnim, { toValue: 0, duration: 350, useNativeDriver: false }),
-        ]),
-        { iterations: 6 }
-      ).start();
-    } else {
-      pulseAnim.setValue(0);
-    }
-  }, [isMatched, isTargetArea]);
-
-  const animBorderColor = pulseAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['#2e7d32', '#76c442'],
-  });
-  const animBorderWidth = pulseAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [2, 3],
-  });
-
-  const isHighlighted = isMatched || isTargetArea;
-
-  let cardBg = '#ffffff';
-  let lotColor = hasYarn ? '#2e7d32' : '#cbd5e1';
-  let locColor = '#64748b';
-  let borderColor = hasYarn ? '#c8e6c9' : '#e2e8f0';
-
-  if (isHighlighted) {
-    cardBg = '#e8f5e9';
-    lotColor = '#1b5e20';
-    locColor = '#2e7d32';
-    borderColor = '#2e7d32'; 
-  }
-
-  return (
-    <Animated.View
-      style={[
-        styles.rackCell,
-        {
-          width: columnWidth,
-          height: columnWidth,
-          backgroundColor: cardBg,
-          borderColor: isHighlighted ? animBorderColor : borderColor,
-          borderWidth: isHighlighted ? animBorderWidth : 1,
-          opacity: shouldDim ? 0.2 : 1.0, // Các ô lưới hiển thị bình thường khi offline
-        },
-        isHighlighted && styles.highlightedCell,
-      ]}
-    >
-      <TouchableOpacity
-        style={styles.rackCellTouchable}
-        onPress={onPress}
-        activeOpacity={0.6}
-      >
-        <View style={styles.cellLine1Container}>
-          <Text style={[styles.cellLocation, { color: locColor }]} numberOfLines={1}>
-            {area.code}
-          </Text>
-          {hasYarn && lots.length > 1 && (
-            <View style={styles.badgeContainer}>
-              <Text style={[styles.badgeText, { color: isHighlighted ? '#1b4d3e' : '#64748b' }]}>
-                +{lots.length - 1}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {hasYarn && lots.length > 0 ? (
-          <View style={styles.lotsWrapper}>
-            <Text
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.6}
-              style={[styles.cellLotGrid, { color: lotColor, fontWeight: '800' }]}
-            >
-              {lots[0]}
-            </Text>
-            {(colors[0] || descs[0]) ? (
-              <Text
-                numberOfLines={1}
-                style={[styles.cellMeta, { color: isHighlighted ? '#2e7d32' : '#94a3b8' }]}
-              >
-                {[colors[0], descs[0]].filter(Boolean).join(' · ')}
-              </Text>
-            ) : null}
-          </View>
-        ) : (
-          <Text
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.6}
-            style={[styles.cellLot, { color: lotColor, fontWeight: '400' }]}
-          >
-            —
-          </Text>
-        )}
-      </TouchableOpacity>
-    </Animated.View>
-  );
-});
-
-// ─── Board Screen ──────────────────────────────────────────────
 function BoardScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ openAreaId?: string; searchLot?: string }>();
@@ -388,8 +264,6 @@ function BoardScreen() {
   const [deleteConfirmArea, setDeleteConfirmArea] = useState<string>('');
   const [isDeleting, setIsDeleting] = useState(false);
 
-  useFocusEffect(useCallback(() => { refetch(); }, [refetch]));
-
   async function handleLogout() {
     try { await setGuestMode(false); if (session) await supabase.auth.signOut(); router.replace('/login'); } 
     catch { Alert.alert('Error', 'Failed to sign out.'); }
@@ -591,25 +465,6 @@ function BoardScreen() {
     setIsAddingLot(true);
 
     try {
-      // 1. Kiểm tra Lot đã tồn tại chưa — join areas để lấy code hiển thị lỗi
-      const { data: existingRoll, error: checkError } = await supabase
-        .from('yarn_rolls')
-        .select('id, is_deleted, area_id, areas(code)')
-        .eq('yarn_code', baseCode);
-
-      if (checkError) throw checkError;
-
-      // Dùng === để tránh null bị nhầm
-      const activeRoll = existingRoll?.find((r: any) => r.is_deleted === false);
-      const deletedRoll = existingRoll?.find((r: any) => r.is_deleted === true);
-
-      if (activeRoll) {
-        const existingAreaCode = (activeRoll.areas as any)?.code || 'another location';
-        setAddLotError(`LOT "${baseCode}" already exists at ${existingAreaCode}.`);
-        setIsAddingLot(false);
-        return;
-      }
-
       let userId = null;
       let operatorEmail = 'Operator';
       try {
@@ -622,39 +477,20 @@ function BoardScreen() {
         // Fallback an toàn
       }
 
-      let rollId = null;
+      // INSERT mới — cho phép trùng lot trong cùng rack hoặc khác rack
+      const { data: insertData, error: insertError } = await supabase
+        .from('yarn_rolls')
+        .insert({
+          yarn_code: baseCode,
+          area_id: addLotAreaId,
+          color: addColor.trim() || null,
+          description: addDesc.trim() || null,
+          is_deleted: false,
+        })
+        .select();
 
-      if (deletedRoll) {
-        // RE-ACTIVATE lot đã bị xóa — tránh lỗi UNIQUE constraint
-        const { data: updateData, error: updateError } = await supabase
-          .from('yarn_rolls')
-          .update({
-            area_id: addLotAreaId,
-            color: addColor.trim() || null,
-            description: addDesc.trim() || null,
-            is_deleted: false,
-          })
-          .eq('id', deletedRoll.id)
-          .select();
-
-        if (updateError) throw updateError;
-        rollId = updateData?.[0]?.id;
-      } else {
-        // INSERT mới
-        const { data: insertData, error: insertError } = await supabase
-          .from('yarn_rolls')
-          .insert({
-            yarn_code: baseCode,
-            area_id: addLotAreaId,
-            color: addColor.trim() || null,
-            description: addDesc.trim() || null,
-            is_deleted: false,
-          })
-          .select();
-
-        if (insertError) throw insertError;
-        rollId = insertData?.[0]?.id;
-      }
+      if (insertError) throw insertError;
+      const rollId = insertData?.[0]?.id;
 
       if (!rollId) throw new Error('Could not process the lot in the database.');
 
@@ -766,104 +602,39 @@ function BoardScreen() {
           </View>
         )}
 
-        {/* Header - Nút Logout bên ngoài đối với Worker và Menu ☰ đối với Admin/Supervisor */}
-        <View style={[styles.header, { paddingTop: insets.top }]}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.headerTitle}>Rack Board</Text>
-            <View style={styles.roleRow}>
-              <Text style={styles.headerSub}>{occupiedRacks}/{totalRacks} occupied</Text>
-              {role === 'supervisor' ? (
-                <View style={[styles.roleBadge, styles.roleSupervisor]}><Text style={styles.roleBadgeText}>Supervisor</Text></View>
-              ) : role === 'admin' ? (
-                <View style={[styles.roleBadge, styles.roleAdmin]}><Text style={styles.roleBadgeText}>Admin</Text></View>
-              ) : (
-                <View style={[styles.roleBadge, styles.roleWorker]}><Text style={styles.roleBadgeText}>Worker</Text></View>
-              )}
-            </View>
-          </View>
-          <View style={styles.headerActions}>
-            {role === 'worker' ? (
-              <TouchableOpacity onPress={handleLogout} style={styles.logoutButtonOutside}>
-                <Ionicons name="log-out-outline" size={16} color="#ffffff" />
-                <Text style={styles.logoutButtonOutsideText}>Logout</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity onPress={() => setIsMenuOpen(true)} style={styles.menuButton}>
-                <Ionicons name="menu" size={26} color="#ffffff" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
+        <BoardHeader 
+          occupiedRacks={occupiedRacks}
+          totalRacks={totalRacks}
+          role={role}
+          handleLogout={handleLogout}
+          setIsMenuOpen={setIsMenuOpen}
+        />
 
-        {/* Menu Dropdown Modal (Chỉ dành cho Admin & Supervisor) */}
-        {isMenuOpen && (
-          <Modal visible={true} transparent animationType="fade" onRequestClose={() => setIsMenuOpen(false)}>
-            <TouchableWithoutFeedback onPress={() => setIsMenuOpen(false)}>
-              <View style={styles.menuOverlay}>
-                <View style={[styles.menuBoundingBox, { maxWidth: appMaxWidth }]}>
-                  <TouchableWithoutFeedback>
-                    <View style={[styles.menuContent, { top: insets.top + 45 }]}>
-                      
-                      {/* Manage Areas (Supervisor/Admin) */}
-                      {(role === 'supervisor' || role === 'admin') && isOnline && (
-                        <TouchableOpacity 
-                          style={styles.menuItem} 
-                          onPress={() => { setIsMenuOpen(false); setShowAreaMgmt(true); }}
-                        >
-                          <Ionicons name="location-outline" size={18} color="#1e293b" />
-                          <Text style={styles.menuItemText}>Manage Areas</Text>
-                        </TouchableOpacity>
-                      )}
+        <MenuModal 
+          visible={isMenuOpen}
+          role={role}
+          isOnline={isOnline}
+          appMaxWidth={appMaxWidth}
+          onClose={() => setIsMenuOpen(false)}
+          onManageAreas={() => { setIsMenuOpen(false); setShowAreaMgmt(true); }}
+          onLogout={() => { setIsMenuOpen(false); handleLogout(); }}
+        />
 
-                      <View style={styles.menuDivider} />
-                      
-                      {/* Logout */}
-                      <TouchableOpacity 
-                        style={styles.menuItem} 
-                        onPress={() => { setIsMenuOpen(false); handleLogout(); }}
-                      >
-                        <Ionicons name="log-out-outline" size={18} color="#dc2626" />
-                        <Text style={[styles.menuItemText, { color: '#dc2626' }]}>Logout</Text>
-                      </TouchableOpacity>
-                      
-                    </View>
-                  </TouchableWithoutFeedback>
-                </View>
-              </View>
-            </TouchableWithoutFeedback>
-          </Modal>
-        )}
+        <SearchBar 
+          searchLotInput={searchLotInput}
+          searchColorInput={searchColorInput}
+          searchDescInput={searchDescInput}
+          activeLot={activeLot}
+          activeColor={activeColor}
+          activeDesc={activeDesc}
+          isSearchActive={isSearchActive}
+          setSearchLotInput={setSearchLotInput}
+          setSearchColorInput={setSearchColorInput}
+          setSearchDescInput={setSearchDescInput}
+          handleSearchScroll={handleSearchScroll}
+          handleClearSearch={handleClearSearch}
+        />
 
-        {/* Real-time Search Bar */}
-        <View style={styles.searchContainer}>
-          <View style={styles.searchRow}>
-            <View style={styles.searchInputWrapper}>
-              <Ionicons name="barcode-outline" size={14} color="#718096" style={styles.searchIcon} />
-              <TextInput style={styles.searchInput} placeholder="Lot" value={searchLotInput} onChangeText={(t) => { setSearchLotInput(t); handleSearchScroll(t, searchColorInput, searchDescInput); }} autoCapitalize="characters" placeholderTextColor="#a0aec0" />
-            </View>
-            <View style={styles.searchInputWrapper}>
-              <Ionicons name="color-palette-outline" size={14} color="#718096" style={styles.searchIcon} />
-              <TextInput style={styles.searchInput} placeholder="Color" value={searchColorInput} onChangeText={(t) => { setSearchColorInput(t); handleSearchScroll(searchLotInput, t, searchDescInput); }} autoCapitalize="none" placeholderTextColor="#a0aec0" />
-            </View>
-            <View style={[styles.searchInputWrapper, { marginRight: 0 }]}>
-              <Ionicons name="text-outline" size={14} color="#718096" style={styles.searchIcon} />
-              <TextInput style={styles.searchInput} placeholder="Desc" value={searchDescInput} onChangeText={(t) => { setSearchDescInput(t); handleSearchScroll(searchLotInput, searchColorInput, t); }} autoCapitalize="none" placeholderTextColor="#a0aec0" />
-            </View>
-          </View>
-          {isSearchActive && (
-            <View style={styles.searchHintRow}>
-              <Text style={styles.searchHint} numberOfLines={1}>
-                {[activeLot ? `Lot: ${activeLot}` : '', activeColor ? `Color: ${activeColor}` : '', activeDesc ? `Desc: ${activeDesc}` : ''].filter(Boolean).join('  ·  ')}
-              </Text>
-              <TouchableOpacity onPress={handleClearSearch} style={styles.searchClearPill}>
-                <Ionicons name="close" size={10} color="#065f46" />
-                <Text style={styles.searchClearPillText}>Clear</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        {/* Bảng chứa lưới Rack */}
         <SectionList
           ref={sectionListRef}
           sections={groupedSectionsForList}
@@ -935,7 +706,7 @@ function BoardScreen() {
             let occupied = 0;
             let total = 0;
             section.data.forEach((row: any) => {
-              row.forEach((cell: any) => {
+              row.forEach((cell: AreaWithCount | null) => {
                 if (cell) {
                   total++;
                   if ((cell.yarn_count ?? 0) > 0) occupied++;
@@ -965,7 +736,7 @@ function BoardScreen() {
                 
                 let sortedYarns = [...activeYarns];
                 if (isSearchActive && hasYarn) {
-                  const matchedIdx = sortedYarns.findIndex((yarn: any) => {
+                  const matchedIdx = sortedYarns.findIndex((yarn) => {
                     const lotMatches = !activeLot || cleanLotNumber(yarn.yarn_code).toLowerCase().startsWith(activeLot);
                     const colorMatches = !activeColor || (yarn.color || '').toLowerCase().startsWith(activeColor);
                     const descMatches = !activeDesc || (yarn.description || '').toLowerCase().startsWith(activeDesc);
@@ -977,9 +748,9 @@ function BoardScreen() {
                   }
                 }
 
-                const lots = hasYarn ? sortedYarns.map((y: any) => cleanLotNumber(y.yarn_code)) : [];
-                const colors = hasYarn ? sortedYarns.map((y: any) => y.color || '') : [];
-                const descs = hasYarn ? sortedYarns.map((y: any) => y.description || '') : [];
+                const lots = hasYarn ? sortedYarns.map((y) => cleanLotNumber(y.yarn_code)) : [];
+                const colors = hasYarn ? sortedYarns.map((y) => y.color || '') : [];
+                const descs = hasYarn ? sortedYarns.map((y) => y.description || '') : [];
                 const isMatched = isCardMatched(area);
                 const isTargetArea = openAreaId === area.id;
                 const shouldDim = isSearchActive && !isMatched;
@@ -1001,7 +772,6 @@ function BoardScreen() {
                         setSelectedArea(area); 
                       } 
                       else if (role === 'supervisor' || role === 'admin') { 
-                        // Cho phép bấm mở bình thường, nút xác nhận lưu bên trong mới bị mờ và disable khi offline
                         handleOpenAddModal(area.id, area.code); 
                       } 
                       else { 
@@ -1020,1119 +790,106 @@ function BoardScreen() {
           }
         />
 
-        {/* Lot Action Modal */}
-        {selectedArea !== null && (
-          <Modal visible={true} transparent={true} animationType="fade" onRequestClose={handleCloseModal}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContainer}>
-              <View style={styles.modalHeader}>
-                <View>
-                  <Text style={styles.modalTitle}>{displayArea?.code}</Text>
-                  <Text style={styles.modalSubtitle}>{displayArea?.yarn_count ? `${displayArea.yarn_count} LOT(s) stored` : 'Empty rack'}</Text>
-                </View>
-                <TouchableOpacity onPress={handleCloseModal} style={styles.closeModalButton}><Ionicons name="close" size={22} color="#64748b" /></TouchableOpacity>
-              </View>
-              <ScrollView style={styles.modalScroll}>
-                <View style={styles.modalContent}>
-                  {displayArea?.yarns && displayArea.yarns.length > 0 ? (
-                    displayArea.yarns.map((yarn) => {
-                      const cleanedLot = cleanLotNumber(yarn.yarn_code);
-                      return (
-                        <View key={yarn.id} style={styles.lotDetailCard}>
-                          <View style={styles.lotDetailHeader}>
-                            <Ionicons name="cube-outline" size={16} color="#1b4d3e" />
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.lotDetailText}>LOT: {cleanedLot}</Text>
-                              {yarn.color && <View style={styles.lotDetailMeta}><Ionicons name="color-palette-outline" size={11} color="#64748b" /><Text style={styles.lotDetailMetaText}>{yarn.color}</Text></View>}
-                              {yarn.description && <View style={styles.lotDetailMeta}><Ionicons name="text-outline" size={11} color="#64748b" /><Text style={styles.lotDetailMetaText}>{yarn.description}</Text></View>}
-                            </View>
-                          </View>
-                          <View style={styles.lotActions}>
-                            {(role === 'supervisor' || role === 'admin') && (
-                              <>
-                                {/* Nút Edit: Tự động mờ đi (opacity 0.5) và bị vô hiệu hóa khi offline */}
-                                <TouchableOpacity 
-                                  style={[
-                                    styles.actionBtnPrimary, 
-                                    { backgroundColor: '#e8f0fe' },
-                                    !isOnline && { backgroundColor: '#f1f5f9', opacity: 0.5 }
-                                  ]} 
-                                  disabled={!isOnline}
-                                  onPress={() => { 
-                                    handleCloseModal(); 
-                                    setEditingYarn({ ...yarn, currentAreaCode: displayArea?.code }); 
-                                    setEditLotCode(cleanedLot); 
-                                    setEditColor(yarn.color || ''); 
-                                    setEditDesc(yarn.description || '');
-                                    setEditLotError(null);
-                                    setEditLotSuccess(false); 
-                                  }}
-                                >
-                                  <Ionicons name="create-outline" size={14} color={isOnline ? "#1a73e8" : "#94a3b8"} />
-                                  <Text style={[styles.actionBtnPrimaryText, { color: isOnline ? '#1a73e8' : '#94a3b8' }]}>Edit</Text>
-                                </TouchableOpacity>
+        <LotActionModal 
+          visible={selectedArea !== null}
+          displayArea={displayArea}
+          role={role}
+          isOnline={isOnline}
+          onClose={handleCloseModal}
+          onEdit={(yarn) => {
+            handleCloseModal(); 
+            setEditingYarn({ ...yarn, currentAreaCode: displayArea?.code }); 
+            setEditLotCode(cleanLotNumber(yarn.yarn_code)); 
+            setEditColor(yarn.color || ''); 
+            setEditDesc(yarn.description || '');
+            setEditLotError(null);
+            setEditLotSuccess(false); 
+          }}
+          onDelete={(yarn, areaCode) => confirmDeleteLot(yarn, areaCode)}
+          onAddLot={handleOpenAddModal}
+        />
 
-                                {/* Nút Delete: Tự động mờ đi (opacity 0.5) và bị vô hiệu hóa khi offline */}
-                                <TouchableOpacity 
-                                  style={[
-                                    styles.actionBtnDelete,
-                                    !isOnline && { backgroundColor: '#f1f5f9', opacity: 0.5 }
-                                  ]} 
-                                  disabled={!isOnline}
-                                  onPress={() => confirmDeleteLot(yarn, displayArea?.code || '')}
-                                >
-                                  <Ionicons name="trash-outline" size={14} color={isOnline ? "#c5221f" : "#94a3b8"} />
-                                  <Text style={[styles.actionBtnDeleteText, { color: isOnline ? '#c5221f' : '#94a3b8' }]}>Delete</Text>
-                                </TouchableOpacity>
-                              </>
-                            )}
-                          </View>
-                        </View>
-                      );
-                    })
-                  ) : (
-                    <View style={styles.emptyRackContainer}>
-                      <Ionicons name="cube-outline" size={36} color="#cbd5e1" />
-                      <Text style={styles.emptyRackText}>This rack is empty</Text>
-                    </View>
-                  )}
-                </View>
-              </ScrollView>
+        <AddLotModal 
+          visible={showAddLot}
+          isOnline={isOnline}
+          addLotAreaCode={addLotAreaCode}
+          addLotCode={addLotCode}
+          addColor={addColor}
+          addDesc={addDesc}
+          isAddingLot={isAddingLot}
+          addLotError={addLotError}
+          addLotSuccess={addLotSuccess}
+          setAddLotCode={setAddLotCode}
+          setAddColor={setAddColor}
+          setAddDesc={setAddDesc}
+          setAddLotError={setAddLotError}
+          onClose={() => { if (!isAddingLot) { setShowAddLot(false); setAddLotError(null); setAddLotSuccess(false); } }}
+          onConfirm={executeAddLot}
+        />
 
-              {/* Nút Add Lot màu xanh lá ở footer: Tự động mờ đi và bị vô hiệu hóa khi offline */}
-              {(role === 'supervisor' || role === 'admin') ? (
-                <TouchableOpacity 
-                  style={[
-                    styles.modalAddFooterBtn,
-                    !isOnline && { backgroundColor: '#f1f5f9', borderTopColor: '#e2e8f0', opacity: 0.5 }
-                  ]} 
-                  disabled={!isOnline}
-                  onPress={() => handleOpenAddModal(displayArea?.id || '', displayArea?.code || '')}
-                >
-                  <Ionicons name="add-circle-outline" size={16} color={isOnline ? "#137333" : "#94a3b8"} />
-                  <Text style={[styles.modalAddFooterText, { color: isOnline ? '#137333' : '#94a3b8' }]}>Add Lot</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity style={styles.modalCloseFooterBtn} onPress={handleCloseModal}>
-                  <Text style={styles.modalCloseFooterText}>Close</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        </Modal>
-        )}
+        <EditLotModal 
+          visible={editingYarn !== null}
+          isOnline={isOnline}
+          editLotCode={editLotCode}
+          editColor={editColor}
+          editDesc={editDesc}
+          isEditingLot={isEditingLot}
+          editLotError={editLotError}
+          editLotSuccess={editLotSuccess}
+          setEditLotCode={setEditLotCode}
+          setEditColor={setEditColor}
+          setEditDesc={setEditDesc}
+          setEditLotError={setEditLotError}
+          onClose={() => { if (!isEditingLot) { setEditingYarn(null); setEditLotError(null); setEditLotSuccess(false); } }}
+          onConfirm={executeEditLot}
+        />
 
-        {/* Add Lot Modal */}
-        {showAddLot && (
-          <Modal
-            visible={true}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={() => { if (!isAddingLot) { setShowAddLot(false); setAddLotError(null); setAddLotSuccess(false); } }}
-          >
-            <View style={styles.modalOverlay}>
-              <View style={styles.editCard}>
-                {/* Success state */}
-                {addLotSuccess ? (
-                  <View style={{ alignItems: 'center', paddingVertical: 16, gap: 10 }}>
-                    <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#d1fae5', alignItems: 'center', justifyContent: 'center' }}>
-                      <Ionicons name="checkmark-circle" size={36} color="#059669" />
-                    </View>
-                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#059669' }}>Added!</Text>
-                    <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center' }}>
-                      LOT <Text style={{ fontWeight: '800', color: '#16a34a' }}>{addLotCode.trim().toUpperCase()}</Text> added to <Text style={{ fontWeight: '800', color: '#16a34a' }}>{addLotAreaCode}</Text>
-                    </Text>
-                  </View>
-                ) : (
-                  <>
-                    <Text style={[styles.editModalTitle, { color: '#137333', textAlign: 'center', marginBottom: 16 }]}>
-                      Add Lot to {addLotAreaCode}
-                    </Text>
+        <DeleteLotModal 
+          visible={deleteConfirmYarn !== null}
+          isOnline={isOnline}
+          yarn={deleteConfirmYarn}
+          areaCode={deleteConfirmArea}
+          isDeleting={isDeleting}
+          onClose={() => { if (!isDeleting) cancelDeleteLot(); }}
+          onConfirm={executeDelete}
+        />
 
-                    {/* Inline error banner */}
-                    {addLotError && (
-                      <View style={styles.addLotErrorBanner}>
-                        <Ionicons name="alert-circle-outline" size={14} color="#dc2626" />
-                        <Text style={styles.addLotErrorText}>{addLotError}</Text>
-                      </View>
-                    )}
-
-                    <View style={styles.fieldWrapper}>
-                      <Text style={styles.fieldLabel}>LOT CODE (*)</Text>
-                      <TextInput
-                        style={[styles.textInput, addLotError && addLotCode.trim() === '' && { borderColor: '#fca5a5' }]}
-                        value={addLotCode}
-                        onChangeText={(t) => { setAddLotCode(t); setAddLotError(null); }}
-                        placeholder="Enter LOT Code"
-                        placeholderTextColor="#94a3b8"
-                        autoCapitalize="characters"
-                        editable={isOnline}
-                      />
-                    </View>
-                    <View style={styles.fieldWrapper}>
-                      <Text style={styles.fieldLabel}>COLOR</Text>
-                      <TextInput style={styles.textInput} value={addColor} onChangeText={setAddColor} placeholder="Enter Color" placeholderTextColor="#94a3b8" editable={isOnline} />
-                    </View>
-                    <View style={styles.fieldWrapper}>
-                      <Text style={styles.fieldLabel}>DESCRIPTION</Text>
-                      <TextInput style={styles.textInput} value={addDesc} onChangeText={setAddDesc} placeholder="Enter Description" placeholderTextColor="#94a3b8" editable={isOnline} />
-                    </View>
-                    <View style={styles.confirmActions}>
-                      <TouchableOpacity style={styles.btnCancel} onPress={() => { setShowAddLot(false); setAddLotError(null); }} disabled={isAddingLot}>
-                        <Text style={styles.btnCancelText}>Cancel</Text>
-                      </TouchableOpacity>
-                      {/* Nút cuối cùng xác nhận Add Lot: Bị mờ đi và disable khi offline */}
-                      <TouchableOpacity 
-                        style={[
-                          styles.btnSaveEdit, 
-                          { backgroundColor: '#137333' },
-                          !isOnline && { backgroundColor: '#cbd5e1', opacity: 0.5 }
-                        ]} 
-                        onPress={executeAddLot} 
-                        disabled={isAddingLot || !isOnline}
-                      >
-                        {isAddingLot ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.btnConfirmText}>Add Lot</Text>}
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                )}
-              </View>
-            </View>
-          </Modal>
-        )}
-
-        {/* Delete Confirm Modal */}
-        {deleteConfirmYarn !== null && (
-          <Modal visible={true} transparent={true} animationType="fade" onRequestClose={() => { if (!isDeleting) cancelDeleteLot(); }}>
-            <View style={styles.modalOverlay}>
-              <View style={styles.confirmCard}>
-                <View style={styles.confirmIconRow}><View style={styles.confirmIconBgDelete}><Ionicons name="trash" size={28} color="#b91c1c" /></View></View>
-                <Text style={styles.confirmTitle}>Delete</Text>
-                <View style={styles.confirmDetails}>
-                  <View style={styles.confirmRow}><Text style={styles.confirmLabel}>LOT Number</Text><Text style={styles.confirmValue}>{cleanLotNumber(deleteConfirmYarn?.yarn_code || '')}</Text></View>
-                  <View style={styles.confirmDivider} />
-                  <View style={styles.confirmRow}><Text style={styles.confirmLabel}>Location</Text><Text style={styles.confirmLocation}>{deleteConfirmArea}</Text></View>
-                </View>
-                <View style={styles.confirmActions}>
-                  <TouchableOpacity style={styles.btnCancel} onPress={cancelDeleteLot} disabled={isDeleting}><Text style={styles.btnCancelText}>Cancel</Text></TouchableOpacity>
-                  {/* Nút cuối cùng xác nhận Delete: Bị mờ đi và disable khi offline */}
-                  <TouchableOpacity 
-                    style={[
-                      styles.btnDeleteConfirm,
-                      !isOnline && { backgroundColor: '#cbd5e1', opacity: 0.5 }
-                    ]} 
-                    onPress={executeDelete} 
-                    disabled={isDeleting || !isOnline}
-                  >
-                    {isDeleting ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.btnConfirmText}>Delete</Text>}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </Modal>
-        )}
-
-        {/* Edit Lot Modal */}
-        {editingYarn !== null && (
-          <Modal
-            visible={true}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={() => { if (!isEditingLot) { setEditingYarn(null); setEditLotError(null); setEditLotSuccess(false); } }}
-          >
-            <View style={styles.modalOverlay}>
-              <View style={styles.editCard}>
-                {/* Success state */}
-                {editLotSuccess ? (
-                  <View style={{ alignItems: 'center', paddingVertical: 16, gap: 10 }}>
-                    <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#e8f0fe', alignItems: 'center', justifyContent: 'center' }}>
-                      <Ionicons name="checkmark-circle" size={36} color="#1a73e8" />
-                    </View>
-                    <Text style={{ fontSize: 16, fontWeight: '800', color: '#1a73e8' }}>Updated!</Text>
-                    <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center' }}>
-                      LOT <Text style={{ fontWeight: '800', color: '#1a73e8' }}>{editLotCode.trim()}</Text> has been saved.
-                    </Text>
-                  </View>
-                ) : (
-                  <>
-                    <Text style={[styles.editModalTitle, { color: '#1a73e8' }]}>Edit Lot Details</Text>
-
-                    {/* Inline error banner */}
-                    {editLotError && (
-                      <View style={styles.addLotErrorBanner}>
-                        <Ionicons name="alert-circle-outline" size={14} color="#dc2626" />
-                        <Text style={styles.addLotErrorText}>{editLotError}</Text>
-                      </View>
-                    )}
-
-                    <View style={styles.fieldWrapper}>
-                      <Text style={styles.fieldLabel}>LOT CODE (*)</Text>
-                      <TextInput
-                        style={[styles.textInput, editLotError && editLotCode.trim() === '' && { borderColor: '#fca5a5' }]}
-                        value={editLotCode}
-                        onChangeText={(t) => { setEditLotCode(t); setEditLotError(null); }}
-                        placeholderTextColor="#94a3b8"
-                        autoCapitalize="characters"
-                        editable={isOnline}
-                      />
-                    </View>
-                    <View style={styles.fieldWrapper}>
-                      <Text style={styles.fieldLabel}>COLOR</Text>
-                      <TextInput style={styles.textInput} value={editColor} onChangeText={setEditColor} placeholderTextColor="#94a3b8" editable={isOnline} />
-                    </View>
-                    <View style={styles.fieldWrapper}>
-                      <Text style={styles.fieldLabel}>DESCRIPTION</Text>
-                      <TextInput style={styles.textInput} value={editDesc} onChangeText={setEditDesc} placeholder="Enter Description" placeholderTextColor="#94a3b8" editable={isOnline} />
-                    </View>
-                    <View style={styles.confirmActions}>
-                      <TouchableOpacity style={styles.btnCancel} onPress={() => { setEditingYarn(null); setEditLotError(null); }} disabled={isEditingLot}>
-                        <Text style={styles.btnCancelText}>Cancel</Text>
-                      </TouchableOpacity>
-                      {/* Nút xác nhận Save mờ đi và disable khi offline */}
-                      <TouchableOpacity 
-                        style={[
-                          styles.btnSaveEdit, 
-                          { backgroundColor: '#1a73e8' },
-                          !isOnline && { backgroundColor: '#cbd5e1', opacity: 0.5 }
-                        ]} 
-                        onPress={executeEditLot} 
-                        disabled={isEditingLot || !isOnline}
-                      >
-                        {isEditingLot ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.btnConfirmText}>Save Details</Text>}
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                )}
-              </View>
-            </View>
-          </Modal>
-        )}
-
-        {/* Area Management Modal Inline */}
-        {showAreaMgmt && (
-          <View style={styles.areaMgmtScreen}>
-            <View style={[styles.areaMgmtHeader, { paddingTop: insets.top + 16 }]}>
-              <TouchableOpacity onPress={handleCloseAreaMgmt} style={styles.areaMgmtBackBtn}>
-                <Ionicons name="arrow-back" size={22} color="#fff" />
-              </TouchableOpacity>
-              <Text style={styles.areaMgmtTitle}>Manage Areas</Text>
-            </View>
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.areaMgmtBody, { paddingBottom: 40 + insets.bottom }]} keyboardShouldPersistTaps="handled">
-              {pendingMode !== null && (
-                <View style={styles.switchBanner}>
-                  <Text style={styles.switchBannerTitle}>Switch mode?</Text>
-                  <Text style={styles.switchBannerSub}>Current input will be cleared.</Text>
-                  <View style={styles.switchBannerActions}>
-                    <TouchableOpacity style={styles.switchCancelBtn} onPress={cancelSwitchMode}><Text style={styles.switchCancelText}>Cancel</Text></TouchableOpacity>
-                    <TouchableOpacity style={styles.switchConfirmBtn} onPress={confirmSwitchMode}><Text style={styles.switchConfirmText}>Switch</Text></TouchableOpacity>
-                  </View>
-                </View>
-              )}
-              <View style={styles.modeCard}>
-                <TouchableOpacity style={[styles.modeRow, areaMgmtMode === 'single' && styles.modeRowActive]} onPress={() => trySetMode('single')}>
-                  <View style={[styles.radioOuter, areaMgmtMode === 'single' && styles.radioOuterActive]}>{areaMgmtMode === 'single' && <View style={styles.radioInner} />}</View>
-                  <Text style={[styles.modeLabel, areaMgmtMode === 'single' ? styles.modeLabelActive : styles.modeLabelDim]}>Single</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.modeRow, areaMgmtMode === 'multiple' && styles.modeRowActive]} onPress={() => trySetMode('multiple')}>
-                  <View style={[styles.radioOuter, areaMgmtMode === 'multiple' && styles.radioOuterActive]}>{areaMgmtMode === 'multiple' && <View style={styles.radioInner} />}</View>
-                  <Text style={[styles.modeLabel, areaMgmtMode === 'multiple' ? styles.modeLabelActive : styles.modeLabelDim]}>Multiple</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.areaMgmtFormCard}>
-                {areaMgmtMode === 'single' ? (
-                  <><Text style={styles.areaMgmtFieldLabel}>Rack Code</Text><TextInput style={styles.areaMgmtInput} placeholder="e.g. A1.1" value={singleCode} onChangeText={setSingleCode} autoCapitalize="characters" placeholderTextColor="#94a3b8" editable={isOnline} /></>
-                ) : (
-                  <>
-                    <Text style={styles.areaMgmtFieldLabel}>Prefix</Text><TextInput style={styles.areaMgmtInput} placeholder="e.g. A1" value={multiPrefix} onChangeText={setMultiPrefix} autoCapitalize="characters" placeholderTextColor="#94a3b8" editable={isOnline} />
-                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-                      <View style={{ flex: 1 }}><Text style={styles.areaMgmtFieldLabel}>From</Text><TextInput style={styles.areaMgmtInput} placeholder="1" value={multiFrom} onChangeText={setMultiFrom} keyboardType="number-pad" placeholderTextColor="#94a3b8" editable={isOnline} /></View>
-                      <View style={{ flex: 1 }}><Text style={styles.areaMgmtFieldLabel}>To</Text><TextInput style={styles.areaMgmtInput} placeholder="12" value={multiTo} onChangeText={setMultiTo} keyboardType="number-pad" placeholderTextColor="#94a3b8" editable={isOnline} /></View>
-                    </View>
-                    {multiRangeError ? (<View style={styles.validationError}><Ionicons name="alert-circle-outline" size={13} color="#dc2626" /><Text style={styles.validationErrorText}>{multiRangeError}</Text></View>) : null}
-                    {multiCreateValid && <Text style={styles.previewText}>{multiPrefix.trim().toUpperCase()}.{multiFromNum} → {multiPrefix.trim().toUpperCase()}.{multiToNum} ({multiToNum - multiFromNum + 1} racks)</Text>}
-                  </>
-                )}
-                <View style={styles.areaMgmtActions}>
-                  {savingArea ? <ActivityIndicator color="#dc2626" style={{ flex: 1 }} /> : (
-                    <TouchableOpacity 
-                      style={[
-                        styles.areaMgmtDeleteBtn, 
-                        (areaMgmtMode === 'single' ? !singleHasData : !multiDeleteValid) && styles.areaMgmtBtnDisabled,
-                        !isOnline && { borderColor: '#cbd5e1', opacity: 0.5 }
-                      ]} 
-                      onPress={areaMgmtMode === 'single' ? handleSingleDelete : handleMultiDelete} 
-                      disabled={savingArea || (areaMgmtMode === 'single' ? !singleHasData : !multiDeleteValid) || !isOnline}
-                    >
-                      <Ionicons name="trash-outline" size={14} color={!isOnline ? '#cbd5e1' : (areaMgmtMode === 'single' ? (singleHasData ? '#dc2626' : '#cbd5e1') : (multiDeleteValid ? '#dc2626' : '#cbd5e1'))} />
-                      <Text style={[styles.areaMgmtDeleteBtnText, (!isOnline || (areaMgmtMode === 'single' ? !singleHasData : !multiDeleteValid)) && { color: '#cbd5e1' }]}>Delete</Text>
-                    </TouchableOpacity>
-                  )}
-                  {savingArea ? <ActivityIndicator color="#059669" style={{ flex: 1 }} /> : (
-                    <TouchableOpacity 
-                      style={[
-                        styles.areaMgmtCreateBtn, 
-                        (areaMgmtMode === 'single' ? !singleCodeValid : !multiCreateValid) && styles.areaMgmtBtnDisabled,
-                        !isOnline && { backgroundColor: '#cbd5e1', opacity: 0.5 }
-                      ]} 
-                      onPress={areaMgmtMode === 'single' ? handleSingleCreate : handleMultiCreate} 
-                      disabled={savingArea || (areaMgmtMode === 'single' ? !singleCodeValid : !multiCreateValid) || !isOnline}
-                    >
-                      <Ionicons name="add-circle-outline" size={14} color={!isOnline ? '#cbd5e1' : (areaMgmtMode === 'single' ? (singleCodeValid ? '#fff' : '#a3b3b3') : (multiCreateValid ? '#fff' : '#a3b3b3'))} />
-                      <Text style={[styles.areaMgmtCreateBtnText, (!isOnline || (areaMgmtMode === 'single' ? !singleCodeValid : !multiCreateValid)) && { color: '#cbd5e1' }]}>Create</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            </ScrollView>
-
-            {/* Area Mgmt Confirm Modal — works on both web and native */}
-            {areaMgmtConfirm !== null && (
-              <Modal
-                visible={true}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setAreaMgmtConfirm(null)}
-              >
-                <View style={styles.modalOverlay}>
-                  <View style={[styles.confirmCard, { maxWidth: 340 }]}>
-                    <View style={styles.confirmIconRow}>
-                      <View style={[styles.confirmIconBgDelete, { backgroundColor: areaMgmtConfirm?.destructive ? '#fce8e6' : '#e8f5e9' }]}>
-                        <Ionicons
-                          name={areaMgmtConfirm?.destructive ? 'trash-outline' : 'checkmark-circle-outline'}
-                          size={28}
-                          color={areaMgmtConfirm?.destructive ? '#b91c1c' : '#059669'}
-                        />
-                      </View>
-                    </View>
-                    <Text style={[styles.confirmTitle, { color: areaMgmtConfirm?.destructive ? '#c5221f' : '#059669' }]}>
-                      {areaMgmtConfirm?.title}
-                    </Text>
-                    <Text style={{ fontSize: 13, color: '#475569', textAlign: 'center', marginBottom: 20, lineHeight: 20 }}>
-                      {areaMgmtConfirm?.message}
-                    </Text>
-                    <View style={styles.confirmActions}>
-                      <TouchableOpacity style={styles.btnCancel} onPress={() => setAreaMgmtConfirm(null)}>
-                        <Text style={styles.btnCancelText}>Cancel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.btnDeleteConfirm, 
-                          { backgroundColor: areaMgmtConfirm?.destructive ? '#c5221f' : '#059669' },
-                          !isOnline && { backgroundColor: '#cbd5e1', opacity: 0.5 }
-                        ]}
-                        onPress={() => areaMgmtConfirm?.onConfirm()}
-                        disabled={!isOnline}
-                      >
-                        <Text style={styles.btnConfirmText}>{areaMgmtConfirm?.destructive ? 'Delete' : 'Confirm'}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
-              </Modal>
-            )}
-          </View>
-        )}
+        <AreaMgmtPanel 
+          visible={showAreaMgmt}
+          isOnline={isOnline}
+          areaMgmtMode={areaMgmtMode}
+          pendingMode={pendingMode}
+          singleCode={singleCode}
+          multiPrefix={multiPrefix}
+          multiFrom={multiFrom}
+          multiTo={multiTo}
+          multiRangeError={multiRangeError}
+          savingArea={savingArea}
+          singleHasData={singleHasData}
+          singleCodeValid={singleCodeValid}
+          multiCreateValid={multiCreateValid}
+          multiDeleteValid={multiDeleteValid}
+          multiFromNum={multiFromNum}
+          multiToNum={multiToNum}
+          areaMgmtConfirm={areaMgmtConfirm}
+          setSingleCode={setSingleCode}
+          setMultiPrefix={setMultiPrefix}
+          setMultiFrom={setMultiFrom}
+          setMultiTo={setMultiTo}
+          trySetMode={trySetMode}
+          cancelSwitchMode={cancelSwitchMode}
+          confirmSwitchMode={confirmSwitchMode}
+          handleSingleDelete={handleSingleDelete}
+          handleMultiDelete={handleMultiDelete}
+          handleSingleCreate={handleSingleCreate}
+          handleMultiCreate={handleMultiCreate}
+          handleCloseAreaMgmt={handleCloseAreaMgmt}
+          setAreaMgmtConfirm={setAreaMgmtConfirm}
+        />
 
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#1b4d3e', alignItems: 'center' },
-  
-  mainAppContainer: { 
-    flex: 1, 
-    width: '100%', 
-    alignSelf: 'center', 
-    backgroundColor: '#f1f5f9',
-    position: 'relative',
-  },
-
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 6,
-    backgroundColor: '#1b4d3e',
-  },
-  headerLeft: { flex: 1, minWidth: 0 },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#fff' },
-  roleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  headerSub: { fontSize: 9, color: '#a7f3d0', fontWeight: '600' },
-  roleBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 4,
-  },
-  roleWorker: { backgroundColor: '#475569' },
-  roleSupervisor: { backgroundColor: '#d97706' },
-  roleAdmin: { backgroundColor: '#dc2626' },
-  roleBadgeText: { color: '#ffffff', fontSize: 8, fontWeight: '800', textTransform: 'uppercase' },
-
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexShrink: 0,
-  },
-  menuButton: {
-    padding: 4,
-  },
-
-  logoutButtonOutside: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#bfbdbd',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  logoutButtonOutsideText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-
-  menuOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-  menuBoundingBox: {
-    flex: 1,
-    width: '100%',
-    alignSelf: 'center',
-    position: 'relative',
-  },
-  menuContent: {
-    position: 'absolute',
-    right: 16,
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    paddingVertical: 8,
-    minWidth: 180,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  menuItemText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1e293b',
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: '#e2e8f0',
-    marginVertical: 4,
-  },
-
-  searchContainer: {
-    backgroundColor: '#1b4d3e',
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#143c30',
-  },
-  searchInputWrapper: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    height: 34,
-    marginRight: 6,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchIcon: { marginRight: 4, flexShrink: 0 },
-  searchInput: {
-    flex: 1,
-    fontSize: 12,
-    color: '#1e293b',
-    paddingVertical: 0,
-    height: '100%',
-    minWidth: 0,
-  },
-  searchHintRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 5,
-    paddingHorizontal: 2,
-  },
-  searchHint: {
-    flex: 1,
-    fontSize: 10,
-    color: '#a7f3d0',
-    fontWeight: '600',
-  },
-  searchClearPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: '#a7f3d0',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    marginLeft: 8,
-  },
-  searchClearPillText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#065f46',
-  },
-
-  listContent: { paddingBottom: 16, paddingLeft: 8, paddingRight: 8 },
-  emptyContainer: { alignItems: 'center', justifyContent: 'center', minHeight: 200 },
-  emptyText: { color: '#64748b', fontSize: 14, textAlign: 'center' },
-
-  sectionHeader: {
-    height: 30,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    backgroundColor: '#e8f5e9',
-    marginTop: 8,
-    borderRadius: 4,
-  },
-  sectionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, paddingRight: 4 },
-  sectionDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#2e7d32' },
-  sectionTitle: { fontSize: 13, fontWeight: '900', letterSpacing: 1, color: '#1b5e20', flexShrink: 1 },
-  sectionCount: { fontSize: 10, fontWeight: '700', color: '#2e7d32', flexShrink: 0 },
-
-  rowGrid: { flexDirection: 'row', gap: 4, paddingVertical: 1 },
-
-  rackCell: {
-    borderRadius: 6,
-    overflow: 'hidden',
-    shadowColor: '#1b4d3e',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  rackCellTouchable: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 2,
-    paddingVertical: 2,
-  },
-  highlightedCell: {
-    shadowColor: '#2e7d32',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  cellLocation: { fontSize: 9, fontWeight: '800', letterSpacing: 0.3 },
-  cellLine1Container: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 2,
-    position: 'relative',
-  },
-  badgeContainer: {
-    position: 'absolute',
-    right: 2,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-  },
-  badgeText: {
-    fontSize: 8,
-    fontWeight: '800',
-  },
-  cellLot: { fontSize: 13, textAlign: 'center', marginTop: 1 },
-  lotsWrapper: {
-    alignItems: 'center',
-    width: '100%',
-    marginTop: 0,
-  },
-  cellLotGrid: {
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  cellMeta: {
-    fontSize: 8,
-    textAlign: 'center',
-    marginTop: 2,
-    fontWeight: '600',
-    paddingHorizontal: 2,
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15,23,42,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  modalContainer: {
-    width: '90%',
-    maxWidth: 380,
-    maxHeight: '90%',
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 10,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 14,
-    backgroundColor: '#f8fafc',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  modalTitle: { fontSize: 17, fontWeight: '800', color: '#1b5e20' },
-  modalSubtitle: { fontSize: 10, color: '#64748b', marginTop: 2 },
-  closeModalButton: { padding: 4 },
-  modalScroll: { maxHeight: 520 },
-  modalContent: { padding: 12 },
-
-  lotDetailCard: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    marginBottom: 8,
-    gap: 10,
-  },
-  lotDetailHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-  },
-  lotDetailText: { fontSize: 16, fontWeight: '800', color: '#1e293b' },
-  lotDetailMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 3,
-  },
-  lotDetailMetaText: { fontSize: 12, color: '#64748b', fontWeight: '500', flexShrink: 1 },
-
-  lotActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 4,
-  },
-  actionBtnPrimary: {
-    flex: 1,
-    minWidth: 65,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: 4,
-  },
-  actionBtnPrimaryText: { fontSize: 11, fontWeight: '700' },
-  actionBtnDelete: {
-    flex: 1,
-    minWidth: 70,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fce8e6', // Màu đỏ nhạt Google Material
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: 4,
-  },
-  actionBtnDeleteText: { color: '#c5221f', fontSize: 11, fontWeight: '700' }, // Chữ màu đỏ đậm
-
-  confirmCard: {
-    width: '100%',
-    maxWidth: 320,
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  confirmIconRow: { alignItems: 'center', marginBottom: 12 },
-  confirmIconBgDelete: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#fce8e6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  confirmTitle: { fontSize: 18, fontWeight: '800', color: '#c5221f', textAlign: 'center', marginBottom: 4 },
-  confirmDetails: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 10,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    gap: 8,
-  },
-  confirmRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  confirmLabel: { fontSize: 12, color: '#64748b', fontWeight: '600' },
-  confirmValue: { fontSize: 14, color: '#0f172a', fontWeight: '800' },
-  confirmLocation: {
-    fontSize: 13,
-    color: '#64748b',
-    fontWeight: '700',
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 5,
-    overflow: 'hidden',
-  },
-  confirmDivider: { height: 1, backgroundColor: '#e2e8f0' },
-  confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 20 },
-  btnCancel: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: '#f1f5f9',
-  },
-  btnCancelText: { color: '#475569', fontSize: 13, fontWeight: '700' },
-  btnDeleteConfirm: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    backgroundColor: '#c5221f',
-    minWidth: 90,
-    alignItems: 'center',
-  },
-  btnConfirmText: { color: '#ffffff', fontSize: 13, fontWeight: '700' },
-
-  addLotErrorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#fef2f2',
-    borderWidth: 1,
-    borderColor: '#fecaca',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 12,
-  },
-  addLotErrorText: { flex: 1, fontSize: 12, color: '#dc2626', fontWeight: '600', lineHeight: 18 },
-
-  editCard: {
-    width: '100%',
-    maxWidth: 320,
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  editModalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 16 },
-  fieldWrapper: { marginBottom: 14 },
-  fieldLabel: { fontSize: 11, fontWeight: '700', color: '#475569', marginBottom: 6, textTransform: 'uppercase' },
-  textInput: {
-    borderWidth: 1.5,
-    borderColor: '#cbd5e1',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 14,
-    color: '#0f172a',
-    backgroundColor: '#f8fafc',
-  },
-  btnSaveEdit: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 8,
-    minWidth: 100,
-    alignItems: 'center',
-  },
-
-  emptyRackContainer: {
-    alignItems: 'center',
-    paddingVertical: 20,
-    gap: 8,
-  },
-  emptyRackText: { color: '#94a3b8', fontSize: 14, fontWeight: '600' },
-
-  modalCloseFooterBtn: {
-    backgroundColor: '#f1f5f9',
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-  },
-  modalCloseFooterText: { fontSize: 12, color: '#475569', fontWeight: '700' },
-
-  modalAddFooterBtn: {
-    backgroundColor: '#e6f4ea', // Màu nền xanh lá nhạt Google Material
-    paddingVertical: 14,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-    borderTopWidth: 1,
-    borderTopColor: '#c8e6c9', // Viền mỏng xanh nhạt
-  },
-  modalAddFooterText: { fontSize: 13, color: '#137333', fontWeight: '800' }, // Chữ xanh lá đậm
-
-  areaMgmtScreen: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#f1f5f9',
-    zIndex: 100,
-    elevation: 100,
-  },
-  areaMgmtHeader: {
-    backgroundColor: '#1b4d3e',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    gap: 14,
-  },
-  areaMgmtTitle: {
-    color: '#ffffff',
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  areaMgmtBackBtn: {
-    padding: 4,
-    borderRadius: 6,
-  },
-  areaMgmtBody: {
-    padding: 16,
-  },
-
-  switchBanner: {
-    backgroundColor: '#fffbeb',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#fde68a',
-  },
-  switchBannerTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#92400e',
-    marginBottom: 2,
-  },
-  switchBannerSub: {
-    fontSize: 12,
-    color: '#b45309',
-    marginBottom: 12,
-  },
-  switchBannerActions: {
-    flexDirection: 'row',
-    gap: 10,
-    justifyContent: 'flex-end',
-  },
-  switchCancelBtn: {
-    paddingVertical: 7,
-    paddingHorizontal: 16,
-    borderRadius: 7,
-    backgroundColor: '#f1f5f9',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  switchCancelText: { color: '#64748b', fontSize: 12, fontWeight: '700' },
-  switchConfirmBtn: {
-    paddingVertical: 7,
-    paddingHorizontal: 16,
-    borderRadius: 7,
-    backgroundColor: '#d97706',
-  },
-  switchConfirmText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-
-  modeCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 8,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    flexDirection: 'row',
-    gap: 8,
-    alignSelf: 'center',
-    width: '100%',
-    maxWidth: 360,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  modeRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-  },
-  modeRowActive: {
-    backgroundColor: '#1b4d3e',
-  },
-  radioOuter: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: '#cbd5e1',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioOuterActive: {
-    borderColor: '#ffffff',
-  },
-  radioInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#ffffff',
-  },
-  modeLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  modeLabelActive: {
-    color: '#ffffff',
-  },
-  modeLabelDim: {
-    color: '#94a3b8',
-  },
-
-  areaMgmtFormCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  areaMgmtFieldLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#475569',
-    textTransform: 'uppercase',
-    marginBottom: 5,
-    marginTop: 2,
-  },
-  areaMgmtInput: {
-    borderWidth: 1.5,
-    borderColor: '#cbd5e1',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: '#0f172a',
-    backgroundColor: '#f8fafc',
-    fontWeight: '600',
-  },
-
-  validationError: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 6,
-    backgroundColor: '#fef2f2',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: '#fecaca',
-  },
-  validationErrorText: {
-    fontSize: 12,
-    color: '#dc2626',
-    fontWeight: '600',
-  },
-  previewText: {
-    fontSize: 11,
-    color: '#059669',
-    fontWeight: '700',
-    marginTop: 6,
-    backgroundColor: '#ecfdf5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 5,
-  },
-
-  areaMgmtActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 18,
-  },
-  areaMgmtDeleteBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 11,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: '#fca5a5',
-    backgroundColor: '#fef2f2',
-  },
-  areaMgmtDeleteBtnText: {
-    color: '#dc2626',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  areaMgmtCreateBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 11,
-    borderRadius: 8,
-    backgroundColor: '#059669',
-  },
-  areaMgmtCreateBtnText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  areaMgmtBtnDisabled: {
-    opacity: 0.4,
-  },
-});
 
 export default BoardScreen;

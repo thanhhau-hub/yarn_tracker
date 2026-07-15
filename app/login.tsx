@@ -221,9 +221,14 @@ export default function LoginScreen() {
           </View>
 
           {/* Footer Note */}
-          <Text style={styles.footerNote}>
-            Authorized Personnel Only · Delta Galil Industries Ltd.
-          </Text>
+          <View style={styles.footerContainer}>
+            <Text style={styles.footerNote}>
+              Authorized Personnel Only · Delta Galil Industries Ltd.
+            </Text>
+            <View style={styles.poweredByContainer}>
+              <Text style={styles.poweredByText}>Powered by IE TEAM</Text>
+            </View>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -421,6 +426,23 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     marginTop: 32,
+    letterSpacing: 0.5,
+  },
+  footerContainer: {
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    flex: 1,
+    marginBottom: 20,
+  },
+  poweredByContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  poweredByText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#047857',
     letterSpacing: 0.5,
   },
 });

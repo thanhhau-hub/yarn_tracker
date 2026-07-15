@@ -5,7 +5,7 @@
     "scheme": "yarn-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/iconapp-padded.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true
@@ -14,9 +14,9 @@
       "package": "com.deltagalil.yarntracker",
       "adaptiveIcon": {
         "backgroundColor": "#ffffff",
-        "foregroundImage": "./assets/android-icon-foreground.png",
+        "foregroundImage": "./assets/iconapp.png",
         "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "monochromeImage": "./assets/iconapp.png"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -24,7 +24,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png",
+      "favicon": "./assets/iconapp-padded.png",
       "name": "Yarn Tracker",
       "shortName": "YarnTracker",
       "description": "Yarn inventory tracking application",
@@ -37,14 +37,23 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 300,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ]
     ],
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "315e4318-dbcd-4e59-9310-0747a3c7ed33"
+        "projectId": "9c85346a-9909-4e96-a58b-41f021666904"
       }
     },
-    "owner": "tao25"
+    "owner": "myth12"
   }
 }
